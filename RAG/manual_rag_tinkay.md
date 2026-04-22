@@ -4,8 +4,34 @@ Este documento detalla la implementación del sistema de **Generación Aumentada
 
 ---
 
+---
+
 ## 🏗️ 1. Arquitectura Multinegocio
 El sistema ha sido migrado de una estructura monolítica a un esquema relacional que permite separar el conocimiento por unidades de negocio utilizando el parámetro `negocio`.
+
+```mermaid
+graph TD
+    subgraph "Fuentes de Datos"
+        A[Formulario Ingesta]
+        B[Dashboard Web]
+        C[PDFs Locales]
+    end
+
+    subgraph "Procesamiento (n8n + Python)"
+        D[TinkayRAG_Ingesta_V2]
+        E[Script Multiformato]
+    end
+
+    subgraph "Almacenamiento (Supabase)"
+        F[(Esquema rag)]
+        G[rag.collections]
+        H[rag.vectors]
+    end
+
+    A & B & C --> D
+    D --> E
+    E --> G & H
+```
 
 - **Esquema de BD:** `rag`
 - **Identificador Tinkay:** `tinkay`
@@ -39,6 +65,29 @@ El flujo de ingesta permite cargar conocimiento desde diversas fuentes, soportan
    ```json
    { "type": "web", "url": "https://tinkay.com/info", "title": "Info Tinkay" }
    ```
+3. **Carga vía Formulario (Interfaz):**
+   Para usuarios que prefieren una interfaz visual, existe un flujo con formulario dedicado.
+   - **Flujo:** `TinkayRAG_FormularioIngesta_V1` (ID: `EHanlWl3s6udKydv`)
+   - **URL del Formulario:** `https://sara.mysatcomla.com/form/tinkay-form-ingesta`
+
+```mermaid
+sequenceDiagram
+    participant U as Usuario
+    participant F as Formulario (n8n)
+    participant I as Ingesta Webhook
+    participant S as Script Python
+    participant DB as Supabase (rag)
+
+    U->>F: Sube PDF/TXT/MD
+    F->>I: POST multipart/form-data
+    I->>I: Guarda en /opt/RAG/temp_files/
+    I->>S: Ejecuta con --file y --negocio tinkay
+    S->>DB: Upsert Colección y Vectores
+    DB-->>S: OK
+    S-->>I: Completado
+    I-->>F: Respuesta Exitosa
+    F-->>U: Confirmación en pantalla
+```
 
 ---
 
