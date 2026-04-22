@@ -15,23 +15,30 @@ El sistema ha sido migrado de una estructura monolítica a un esquema relacional
 
 ## 🔄 2. Proceso de Ingesta (Carga de Datos)
 
-El flujo de ingesta toma fuentes externas (PDF o Web) y las transforma en vectores dentro de la base de datos.
+El flujo de ingesta permite cargar conocimiento desde diversas fuentes, soportando ahora archivos locales y remotos.
 
 ### Componentes:
-- **Flujo n8n:** `TinkayRAG_Ingesta_V1` (ID: `XT2mlHdZxQ01Sp6L`)
-- **Script de Procesamiento:** `/opt/RAG/implementacion_SARA/Ingesta_PDF_WEB.py`
+- **Flujo n8n:** `TinkayRAG_Ingesta_V2_Multiformato` (ID: `XT2mlHdZxQ01Sp6L`)
+- **Script de Procesamiento:** `/opt/RAG/implementacion_SARA/Ingesta_PDF_WEB.py` (Versión Multiformato)
 
-### Funcionamiento:
-1. El webhook recibe la URL o el archivo PDF.
-2. Se invoca al script de Python con los flags de negocio:
+### Formatos Soportados:
+- **PDF:** Extracción de texto con PyMuPDF.
+- **TXT / MD:** Lectura directa de archivos de texto plano y Markdown.
+- **Web:** Scraping dinámico de URLs.
+
+### Modos de Carga:
+1. **Carga por Archivo (POST):**
+   Envío directo del archivo al webhook mediante un POST multipart. El sistema guarda temporalmente el archivo, lo procesa y lo elimina al finalizar.
    ```bash
-   python3 Ingesta_PDF_WEB.py --pdf [Ruta] --negocio "tinkay" --source [Nombre] --visibilidad "publico"
+   curl -X POST https://sara.mysatcomla.com/webhook/rag-kt-ingesta \
+        -F "file=@mi_documento.pdf" \
+        -F "source=Manual_Usuario"
    ```
-3. El script realiza:
-   - Chunking semántico recursivo.
-   - Generación de embeddings con Gemini.
-   - Registro de la fuente en `rag.collections`.
-   - Inserción de vectores en `rag.vectors` asociados al `collection_id`.
+2. **Carga por URL (Web):**
+   Envío de un JSON con la URL a scrapear.
+   ```json
+   { "type": "web", "url": "https://tinkay.com/info", "title": "Info Tinkay" }
+   ```
 
 ---
 
@@ -82,6 +89,9 @@ Este flujo actúa como el orquestador final que recibe la pregunta del usuario, 
 - **Orquestador:** n8n SARA (Auto-hosteado en `https://sara.mysatcomla.com`).
 - **Base de Datos:** Supabase (`ufnpzxlvpwagavoytwco`).
 - **Entorno Python:** PyMuPDF, Supabase-py, Google-GenAI.
+- **Directorios Servidor:** 
+  - Scripts: `/opt/RAG/implementacion_SARA/`
+  - Temporales: `/opt/RAG/temp_files/` (Para carga de archivos vía POST)
 
 ---
 *Manual generado por Antigravity - Proyecto TINKAY 2026*
