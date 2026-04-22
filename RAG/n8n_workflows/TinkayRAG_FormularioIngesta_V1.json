@@ -1,84 +1,88 @@
 {
-  "name": "TinkayRAG_FormularioIngesta_V1",
-  "nodes": [
-    {
-      "parameters": {
-        "httpMethod": "POST",
-        "path": "tinkay-form-ingesta",
-        "formTitle": "Ingesta de Conocimiento - Tinkay",
-        "formDescription": "Sube un archivo (PDF, TXT, MD) para alimentar la base de conocimientos.",
-        "formFields": {
-          "values": [
-            {
-              "fieldLabel": "Nombre de la Fuente",
-              "fieldType": "string",
-              "requiredField": true
-            },
-            {
-              "fieldLabel": "Archivo",
-              "fieldType": "file",
-              "requiredField": true
-            }
-          ]
-        },
-        "options": {}
-      },
-      "id": "form-trigger-id",
-      "name": "Formulario de Ingesta",
-      "type": "n8n-nodes-base.formTrigger",
-      "typeVersion": 1,
-      "position": [
-        112,
-        400
-      ],
-      "webhookId": "f208728f-99a4-4a27-bfe6-9dfb1500542d"
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "https://sara.mysatcomla.com/webhook/rag-kt-ingesta",
-        "sendBody": true,
-        "contentType": "multipart-form-data",
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "source",
-              "value": "={{ $json['Nombre de la Fuente'] }}"
-            },
-            {
-              "name": "type",
-              "value": "file"
-            }
-          ]
-        },
-        "sendBinaryData": true,
-        "sourceKey": "Archivo",
-        "options": {}
-      },
-      "id": "http-request-id",
-      "name": "Enviar a RAG Ingesta",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [
-        304,
-        400
-      ]
-    }
-  ],
-  "connections": {
-    "Formulario de Ingesta": {
-      "main": [
-        [
-          {
-            "node": "Enviar a RAG Ingesta",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    }
-  },
-  "settings": {
-    "executionOrder": "v1"
-  }
+    "name":  "TinkayRAG_FormularioIngesta_V1",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "httpMethod":  "POST",
+                                         "path":  "tinkay-form-ingesta",
+                                         "formTitle":  "Ingesta de Conocimiento - Tinkay",
+                                         "formDescription":  "Sube un archivo (PDF, TXT, MD) para alimentar la base de conocimientos.",
+                                         "formFields":  {
+                                                            "values":  [
+                                                                           {
+                                                                               "fieldLabel":  "Nombre de la Fuente",
+                                                                               "fieldType":  "string",
+                                                                               "requiredField":  false
+                                                                           },
+                                                                           {
+                                                                               "fieldLabel":  "Archivo",
+                                                                               "fieldType":  "file",
+                                                                               "requiredField":  true
+                                                                           }
+                                                                       ]
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "form-trigger-id",
+                      "name":  "Formulario de Ingesta",
+                      "type":  "n8n-nodes-base.formTrigger",
+                      "typeVersion":  1,
+                      "position":  [
+                                       112,
+                                       400
+                                   ],
+                      "webhookId":  "f208728f-99a4-4a27-bfe6-9dfb1500542d"
+                  },
+                  {
+                      "parameters":  {
+                                         "method":  "POST",
+                                         "url":  "https://sara.mysatcomla.com/webhook/rag-kt-ingesta",
+                                         "sendBody":  true,
+                                         "contentType":  "multipart-form-data",
+                                         "bodyParameters":  {
+                                                                "parameters":  [
+                                                                                   {
+                                                                                       "name":  "source",
+                                                                                       "value":  "={{ $json[\u0027Nombre de la Fuente\u0027] || $binary[\u0027Archivo\u0027].fileName }}"
+                                                                                   },
+                                                                                   {
+                                                                                       "name":  "type",
+                                                                                       "value":  "file"
+                                                                                   }
+                                                                               ]
+                                                            },
+                                         "sendBinaryData":  true,
+                                         "sourceKey":  "Archivo",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "http-request-id",
+                      "name":  "Enviar a RAG Ingesta",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.1,
+                      "position":  [
+                                       304,
+                                       400
+                                   ]
+                  }
+              ],
+    "connections":  {
+                        "Formulario de Ingesta":  {
+                                                      "main":  [
+                                                                   [
+                                                                       {
+                                                                           "node":  "Enviar a RAG Ingesta",
+                                                                           "type":  "main",
+                                                                           "index":  0
+                                                                       }
+                                                                   ]
+                                                               ]
+                                                  }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1"
+                 }
 }
