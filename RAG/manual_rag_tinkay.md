@@ -39,7 +39,18 @@ graph TD
 
 ---
 
-## 🔄 2. Proceso de Ingesta (Carga de Datos)
+#### 1. Gestión de Variables y Secretos (n8n Data Tables)
+
+Para evitar la exposición de credenciales en los archivos JSON de los flujos o en scripts de servidor, se ha implementado un sistema de gestión centralizado utilizando **n8n Data Tables**.
+
+*   **Tabla:** `PruebasKT` (ID: `tTce4CBCWb8fcYmZ`)
+*   **Variables Almacenadas:**
+    *   `SUPABASE_API_KEY`: Token de acceso para el esquema `rag`.
+*   **Implementación:**
+    1.  Cada flujo inicia con un nodo **Get_Global_Variables** que consulta la tabla filtrando por nombre.
+    2.  Los nodos HTTP y comandos de sistema utilizan la expresión `{{ $('Get_Global_Variables').item.json.valor }}`.
+
+#### 2. Definición de la Tabla de Vectores (DDL)
 
 El flujo de ingesta permite cargar conocimiento desde diversas fuentes, soportando ahora archivos locales y remotos.
 
@@ -105,6 +116,22 @@ A diferencia del sistema anterior, las consultas ahora filtran estrictamente por
 - `p_estado = 'ACTIVO'`
 - `p_visibilidad = 'publico'` (o privado según el usuario).
 
+### Flujo de Recuperación:
+```mermaid
+sequenceDiagram
+    participant U as Usuario / Chat
+    participant N as Flujo Consulta (n8n)
+    participant G as Gemini (Embeddings)
+    participant DB as Supabase (rag)
+
+    U->>N: Pregunta del Usuario
+    N->>G: Generar Vector de Consulta (3072 dims)
+    G-->>N: Vector de búsqueda
+    N->>DB: rpc.match_documents(vector, negocio='tinkay')
+    DB-->>N: Fragmentos más relevantes (Top K)
+    N-->>U: Contexto recuperado para respuesta
+```
+
 ---
 
 ## 💬 4. Prueba de Consulta (Chat)
@@ -116,6 +143,26 @@ Este flujo actúa como el orquestador final que recibe la pregunta del usuario, 
 ---
 
 ## 🗄️ 5. Estructura Supabase (Esquema `rag`)
+
+### Modelo de Datos (ER):
+```mermaid
+erDiagram
+    COLLECTIONS ||--o{ VECTORS : "contiene"
+    COLLECTIONS {
+        uuid id PK
+        string name "Nombre del documento/fuente"
+        string negocio "Identificador: tinkay"
+        string tipo "pdf, web, txt, md"
+        string visibilidad "publico, privado"
+        string estado "ACTIVO, INACTIVO"
+    }
+    VECTORS {
+        uuid id PK
+        uuid collection_id FK "Relación con la fuente"
+        text content "Fragmento de texto (chunk)"
+        vector embedding "Vector de 3072 dimensiones"
+    }
+```
 
 ### Tablas Principales:
 1. **`rag.collections`**: Almacena las fuentes de información.

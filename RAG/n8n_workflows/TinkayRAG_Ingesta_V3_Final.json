@@ -1,0 +1,347 @@
+{
+  "updatedAt": "2026-04-22T17:49:26.391Z",
+  "createdAt": "2026-04-12T14:28:07.818Z",
+  "id": "XT2mlHdZxQ01Sp6L",
+  "name": "TinkayRAG_Ingesta_V3_Final",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "rag-kt-ingesta",
+        "options": {
+          "binaryData": true
+        }
+      },
+      "id": "webhook-id",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -608,
+        208
+      ],
+      "webhookId": "fce65f5c-9d56-4048-9787-3d3f1ae438b3"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.body.type || ($binary ? 'file' : 'web') }}",
+              "value2": "web"
+            }
+          ]
+        }
+      },
+      "id": "if-id",
+      "name": "If Web or File",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "command": "python3 /opt/RAG/implementacion_SARA/Ingesta_PDF_WEB.py --web=\"{{ $json.body.url }}\" --source=\"{{ $json.body.title || 'Web Page' }}\" --negocio=\"tinkay\" --visibilidad=\"publico\" --user=\"{{ $json.body.user || 'admin@tinkay.com' }}\" --supabase_key=\"{{ $('Get_Global_Variables').item.json.valor }}\""
+      },
+      "id": "web-id",
+      "name": "Ingesta Web",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        -96,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "throw new Error(JSON.stringify({\n  \"nodes\": [\n    {\n      \"parameters\": {\n        \"httpMethod\": \"POST\",\n        \"path\": \"rag-kt-ingesta\",\n        \"options\": {\n          \"binaryData\": true\n        }\n      },\n      \"id\": \"webhook-id\",\n      \"name\": \"Webhook\",\n      \"type\": \"n8n-nodes-base.webhook\",\n      \"typeVersion\": 1,\n      \"position\": [\n        -608,\n        208\n      ],\n      \"webhookId\": \"fce65f5c-9d56-4048-9787-3d3f1ae438b3\"\n    },\n    {\n      \"parameters\": {\n        \"conditions\": {\n          \"string\": [\n            {\n              \"value1\": \"={{ $json.body.type || ($binary ? 'file' : 'web') }}\",\n              \"value2\": \"web\"\n            }\n          ]\n        }\n      },\n      \"id\": \"if-id\",\n      \"name\": \"If Web or File\",\n      \"type\": \"n8n-nodes-base.if\",\n      \"typeVersion\": 1,\n      \"position\": [\n        -400,\n        208\n      ]\n    },\n    {\n      \"parameters\": {\n        \"command\": \"python3 /opt/RAG/implementacion_SARA/Ingesta_PDF_WEB.py --web=\\\"{{ $json.body.url }}\\\" --source=\\\"{{ $json.body.title || 'Web Page' }}\\\" --negocio=\\\"tinkay\\\" --visibilidad=\\\"publico\\\" --user=\\\"{{ $json.body.user || 'admin@tinkay.com' }}\\\"\"\n      },\n      \"id\": \"web-id\",\n      \"name\": \"Ingesta Web\",\n      \"type\": \"n8n-nodes-base.executeCommand\",\n      \"typeVersion\": 1,\n      \"position\": [\n        -96,\n        112\n      ]\n    },\n    {\n      \"parameters\": {\n        \"jsCode\": \"const fs = require('fs');\\nconst binaryKey = Object.keys($binary)[0];\\nconst item = $binary[binaryKey];\\nconst filePath = `/tmp/${item.fileName}`;\\nconst buffer = Buffer.from(item.data, 'base64');\\nfs.writeFileSync(filePath, buffer);\\nreturn { filePath, fileName: item.fileName };\"\n      },\n      \"id\": \"code-save-id\",\n      \"name\": \"Save File Nodejs\",\n      \"type\": \"n8n-nodes-base.code\",\n      \"typeVersion\": 1,\n      \"position\": [\n        -96,\n        304\n      ]\n    },\n    {\n      \"parameters\": {\n        \"command\": \"python3 /opt/RAG/implementacion_SARA/Ingesta_PDF_WEB.py --file=\\\"{{ $json.filePath }}\\\" --source=\\\"{{ $json.fileName }}\\\" --negocio=\\\"tinkay\\\" --visibilidad=\\\"publico\\\" --user=\\\"admin@tinkay.com\\\"\"\n      },\n      \"id\": \"file-id\",\n      \"name\": \"Ingesta File\",\n      \"type\": \"n8n-nodes-base.executeCommand\",\n      \"typeVersion\": 1,\n      \"position\": [\n        112,\n        304\n      ]\n    },\n    {\n      \"parameters\": {\n        \"content\": \"## I'm a note \\n**Double click** to edit me. [Guide](https://docs.n8n.io/workflows/components/sticky-notes/){\\n  \\\"nodes\\\": [\\n    {\\n      \\\"parameters\\\": {\\n        \\\"httpMethod\\\": \\\"POST\\\",\\n        \\\"path\\\": \\\"rag-kt-ingesta\\\",\\n        \\\"options\\\": {\\n          \\\"binaryData\\\": true\\n        }\\n      },\\n      \\\"id\\\": \\\"webhook-id\\\",\\n      \\\"name\\\": \\\"Webhook\\\",\\n      \\\"type\\\": \\\"n8n-nodes-base.webhook\\\",\\n      \\\"typeVersion\\\": 1,\\n      \\\"position\\\": [\\n        -608,\\n        208\\n      ],\\n      \\\"webhookId\\\": \\\"fce65f5c-9d56-4048-9787-3d3f1ae438b3\\\"\\n    },\\n    {\\n      \\\"parameters\\\": {\\n        \\\"conditions\\\": {\\n          \\\"string\\\": [\\n            {\\n              \\\"value1\\\": \\\"={{ $json.body.type || ($binary ? 'file' : 'web') }}\\\",\\n              \\\"value2\\\": \\\"web\\\"\\n            }\\n          ]\\n        }\\n      },\\n      \\\"id\\\": \\\"if-id\\\",\\n      \\\"name\\\": \\\"If Web or File\\\",\\n      \\\"type\\\": \\\"n8n-nodes-base.if\\\",\\n      \\\"typeVersion\\\": 1,\\n      \\\"position\\\": [\\n        -400,\\n        208\\n      ]\\n    },\\n    {\\n      \\\"parameters\\\": {\\n        \\\"command\\\": \\\"python3 /opt/RAG/implementacion_SARA/Ingesta_PDF_WEB.py --web=\\\\\\\"{{ $json.body.url }}\\\\\\\" --source=\\\\\\\"{{ $json.body.title || 'Web Page' }}\\\\\\\" --negocio=\\\\\\\"tinkay\\\\\\\" --visibilidad=\\\\\\\"publico\\\\\\\" --user=\\\\\\\"{{ $json.body.user || 'admin@tinkay.com' }}\\\\\\\"\\\"\\n      },\\n      \\\"id\\\": \\\"web-id\\\",\\n      \\\"name\\\": \\\"Ingesta Web\\\",\\n      \\\"type\\\": \\\"n8n-nodes-base.executeCommand\\\",\\n      \\\"typeVersion\\\": 1,\\n      \\\"position\\\": [\\n        -96,\\n        112\\n      ]\\n    },\\n    {\\n      \\\"parameters\\\": {\\n        \\\"jsCode\\\": \\\"const fs = require('fs');\\\\nconst binaryKey = Object.keys($binary)[0];\\\\nconst item = $binary[binaryKey];\\\\nconst filePath = `/tmp/${item.fileName}`;\\\\nconst buffer = Buffer.from(item.data, 'base64');\\\\nfs.writeFileSync(filePath, buffer);\\\\nreturn { filePath, fileName: item.fileName };\\\"\\n      },\\n      \\\"id\\\": \\\"code-save-id\\\",\\n      \\\"name\\\": \\\"Save File Nodejs\\\",\\n      \\\"type\\\": \\\"n8n-nodes-base.code\\\",\\n      \\\"typeVersion\\\": 1,\\n      \\\"position\\\": [\\n        -96,\\n        304\\n      ]\\n    },\\n    {\\n      \\\"parameters\\\": {\\n        \\\"command\\\": \\\"python3 /opt/RAG/implementacion_SARA/Ingesta_PDF_WEB.py --file=\\\\\\\"{{ $json.filePath }}\\\\\\\" --source=\\\\\\\"{{ $json.fileName }}\\\\\\\" --negocio=\\\\\\\"tinkay\\\\\\\" --visibilidad=\\\\\\\"publico\\\\\\\" --user=\\\\\\\"admin@tinkay.com\\\\\\\"\\\"\\n      },\\n      \\\"id\\\": \\\"file-id\\\",\\n      \\\"name\\\": \\\"Ingesta File\\\",\\n      \\\"type\\\": \\\"n8n-nodes-base.executeCommand\\\",\\n      \\\"typeVersion\\\": 1,\\n      \\\"position\\\": [\\n        112,\\n        304\\n      ]\\n    }\\n  ],\\n  \\\"connections\\\": {\\n    \\\"Webhook\\\": {\\n      \\\"main\\\": [\\n        [\\n          {\\n            \\\"node\\\": \\\"If Web or File\\\",\\n            \\\"type\\\": \\\"main\\\",\\n            \\\"index\\\": 0\\n          }\\n        ]\\n      ]\\n    },\\n    \\\"If Web or File\\\": {\\n      \\\"main\\\": [\\n        [\\n          {\\n            \\\"node\\\": \\\"Ingesta Web\\\",\\n            \\\"type\\\": \\\"main\\\",\\n            \\\"index\\\": 0\\n          }\\n        ],\\n        [\\n          {\\n            \\\"node\\\": \\\"Save File Nodejs\\\",\\n            \\\"type\\\": \\\"main\\\",\\n            \\\"index\\\": 0\\n          }\\n        ]\\n      ]\\n    },\\n    \\\"Save File Nodejs\\\": {\\n      \\\"main\\\": [\\n        [\\n          {\\n            \\\"node\\\": \\\"Ingesta File\\\",\\n            \\\"type\\\": \\\"main\\\",\\n            \\\"index\\\": 0\\n          }\\n        ]\\n      ]\\n    }\\n  },\\n  \\\"pinData\\\": {},\\n  \\\"meta\\\": {\\n    \\\"instanceId\\\": \\\"7a4c9fd8836bc2d6ba5a64e1f0b740983e9d5ef18d4a53a468a5b9bfbc0d9885\\\"\\n  }\\n}\"\n      },\n      \"type\": \"n8n-nodes-base.stickyNote\",\n      \"position\": [\n        -304,\n        272\n      ],\n      \"typeVersion\": 1,\n      \"id\": \"f7916451-ca30-4a2a-88ad-433a4ae869d9\",\n      \"name\": \"Sticky Note\"\n    }\n  ],\n  \"connections\": {\n    \"Webhook\": {\n      \"main\": [\n        [\n          {\n            \"node\": \"If Web or File\",\n            \"type\": \"main\",\n            \"index\": 0\n          }\n        ]\n      ]\n    },\n    \"If Web or File\": {\n      \"main\": [\n        [\n          {\n            \"node\": \"Ingesta Web\",\n            \"type\": \"main\",\n            \"index\": 0\n          }\n        ],\n        [\n          {\n            \"node\": \"Save File Nodejs\",\n            \"type\": \"main\",\n            \"index\": 0\n          }\n        ]\n      ]\n    },\n    \"Save File Nodejs\": {\n      \"main\": [\n        [\n          {\n            \"node\": \"Ingesta File\",\n            \"type\": \"main\",\n            \"index\": 0\n          }\n        ]\n      ]\n    }\n  },\n  \"pinData\": {},\n  \"meta\": {\n    \"instanceId\": \"7a4c9fd8836bc2d6ba5a64e1f0b740983e9d5ef18d4a53a468a5b9bfbc0d9885\"\n  }\n}));"
+      },
+      "id": "code-save-id",
+      "name": "Save File Nodejs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        -96,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "command": "python3 /opt/RAG/implementacion_SARA/Ingesta_PDF_WEB.py --file=\"{{ $json.filePath }}\" --source=\"{{ $json.fileName }}\" --negocio=\"tinkay\" --visibilidad=\"publico\" --user=\"admin@tinkay.com\" --supabase_key=\"{{ $('Get_Global_Variables').item.json.valor }}\""
+      },
+      "id": "file-id",
+      "name": "Ingesta File",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        112,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getRows",
+        "databaseId": "tTce4CBCWb8fcYmZ",
+        "filterType": "manual",
+        "filters": {
+          "conditions": [
+            {
+              "key": "nombre",
+              "operator": "equal",
+              "value": "SUPABASE_API_KEY"
+            }
+          ]
+        }
+      },
+      "id": "get-global-vars-id-crm14",
+      "name": "Get_Global_Variables",
+      "type": "n8n-nodes-base.n8nDataTables",
+      "typeVersion": 1,
+      "position": [
+        -800,
+        200
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Get_Global_Variables",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Web or File": {
+      "main": [
+        [
+          {
+            "node": "Ingesta Web",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Save File Nodejs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save File Nodejs": {
+      "main": [
+        [
+          {
+            "node": "Ingesta File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get_Global_Variables": {
+      "main": [
+        [
+          {
+            "node": "If Web or File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": {},
+  "versionId": "ab499a08-211e-4efd-9748-ec423fd605e0",
+  "activeVersionId": "3d44ee84-487a-40a3-ad01-7075099cba5c",
+  "versionCounter": 69,
+  "triggerCount": 1,
+  "shared": [
+    {
+      "updatedAt": "2026-04-12T14:28:07.830Z",
+      "createdAt": "2026-04-12T14:28:07.830Z",
+      "role": "workflow:owner",
+      "workflowId": "XT2mlHdZxQ01Sp6L",
+      "projectId": "Gl0z3DNsbKkj4wmb",
+      "project": {
+        "updatedAt": "2025-07-14T00:32:57.724Z",
+        "createdAt": "2025-07-14T00:30:54.688Z",
+        "id": "Gl0z3DNsbKkj4wmb",
+        "name": "Jesus Navarrete <jesus.navarrete@satcomla.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "creatorId": "57c765b1-1447-43a1-a14d-bbeacac5d303"
+      }
+    }
+  ],
+  "tags": [],
+  "activeVersion": {
+    "updatedAt": "2026-04-22T17:46:01.913Z",
+    "createdAt": "2026-04-22T17:46:01.913Z",
+    "versionId": "3d44ee84-487a-40a3-ad01-7075099cba5c",
+    "workflowId": "XT2mlHdZxQ01Sp6L",
+    "nodes": [
+      {
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "rag-kt-ingesta",
+          "options": {
+            "binaryData": true
+          }
+        },
+        "id": "webhook-id",
+        "name": "Webhook",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 1,
+        "position": [
+          -600,
+          200
+        ],
+        "webhookId": "132a87c4-53da-47d6-80d4-50924e9658af"
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "string": [
+              {
+                "value1": "={{ $json.body.type || ($binary ? 'file' : 'web') }}",
+                "value2": "web"
+              }
+            ]
+          }
+        },
+        "id": "if-id",
+        "name": "If Web or File",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 1,
+        "position": [
+          -400,
+          200
+        ]
+      },
+      {
+        "parameters": {
+          "command": "python3 /opt/RAG/implementacion_SARA/Ingesta_PDF_WEB.py --web=\"{{ $json.body.url }}\" --source=\"{{ $json.body.title || 'Web Page' }}\" --negocio=\"tinkay\" --visibilidad=\"publico\" --user=\"{{ $json.body.user || 'admin@tinkay.com' }}\""
+        },
+        "id": "web-id",
+        "name": "Ingesta Web",
+        "type": "n8n-nodes-base.executeCommand",
+        "typeVersion": 1,
+        "position": [
+          -100,
+          100
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "const binaryKey = Object.keys($binary)[0];\nconst item = $binary[binaryKey];\nreturn {\n  fileName: item.fileName,\n  fileData: item.data\n};"
+        },
+        "id": "prepare-id",
+        "name": "Prepare Base64",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 1,
+        "position": [
+          -200,
+          300
+        ]
+      },
+      {
+        "parameters": {
+          "command": "python3 /opt/RAG/implementacion_SARA/Ingesta_PDF_WEB.py --base64=\"{{ $json.fileData }}\" --filename=\"{{ $json.fileName }}\" --negocio=\"tinkay\" --source=\"{{ $json.fileName }}\" --visibilidad=\"publico\""
+        },
+        "id": "file-id",
+        "name": "Ingesta File",
+        "type": "n8n-nodes-base.executeCommand",
+        "typeVersion": 1,
+        "position": [
+          100,
+          300
+        ]
+      }
+    ],
+    "connections": {
+      "Webhook": {
+        "main": [
+          [
+            {
+              "node": "If Web or File",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "If Web or File": {
+        "main": [
+          [
+            {
+              "node": "Ingesta Web",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Prepare Base64",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Prepare Base64": {
+        "main": [
+          [
+            {
+              "node": "Ingesta File",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "authors": "Jesus Navarrete",
+    "name": null,
+    "description": null,
+    "autosaved": false,
+    "workflowPublishHistory": [
+      {
+        "createdAt": "2026-04-22T17:46:01.951Z",
+        "id": 1046,
+        "workflowId": "XT2mlHdZxQ01Sp6L",
+        "versionId": "3d44ee84-487a-40a3-ad01-7075099cba5c",
+        "event": "activated",
+        "userId": "57c765b1-1447-43a1-a14d-bbeacac5d303"
+      },
+      {
+        "createdAt": "2026-04-22T17:46:01.938Z",
+        "id": 1045,
+        "workflowId": "XT2mlHdZxQ01Sp6L",
+        "versionId": "3d44ee84-487a-40a3-ad01-7075099cba5c",
+        "event": "deactivated",
+        "userId": "57c765b1-1447-43a1-a14d-bbeacac5d303"
+      }
+    ]
+  }
+}

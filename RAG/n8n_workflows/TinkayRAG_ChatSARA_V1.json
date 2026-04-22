@@ -1,0 +1,601 @@
+{
+  "updatedAt": "2026-04-22T11:49:41.116Z",
+  "createdAt": "2026-04-13T09:13:44.582Z",
+  "id": "eiseWnDVUMV8L49D",
+  "name": "RAG_KT_Chat_Console_pruebas",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "public": true,
+        "options": {}
+      },
+      "id": "e7a2aba2-dac6-429c-80de-2762b16f3982",
+      "name": "Chat Trigger",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -512,
+        -96
+      ],
+      "webhookId": "d18cb030-6b23-4eaa-a721-e9d2cdab5d68"
+    },
+    {
+      "parameters": {
+        "options": {
+          "systemMessage": "Eres SARA, un asistente experto. Utiliza ÚNICAMENTE la información provista por tu herramienta de búsqueda de manuales para responder las preguntas del usuario. Si no encuentras la respuesta en la herramienta, di que no lo sabes."
+        }
+      },
+      "id": "76a61d33-90b4-4cfc-ab99-c3a871c7f1c2",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.6,
+      "position": [
+        -144,
+        -144
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "6b39e5bc-f173-4ae6-bc3e-b70052e29e8d",
+      "name": "Window Buffer Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.2,
+      "position": [
+        -96,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "name": "catalogo",
+        "description": "Utiliza esta herramienta SIEMPRE para buscar respuestas técnicas, manuales o datos de los productos cargados.",
+        "topK": "=4"
+      },
+      "id": "9bc3a3a1-3471-472d-9191-272ebc5aff60",
+      "name": "Vector Store Tool",
+      "type": "@n8n/n8n-nodes-langchain.toolVectorStore",
+      "typeVersion": 1,
+      "position": [
+        336,
+        -32
+      ]
+    },
+    {
+      "parameters": {
+        "tableName": {
+          "__rl": true,
+          "value": "vectors",
+          "mode": "id"
+        },
+        "options": {
+          "queryName": "match_vectors"
+        }
+      },
+      "id": "c9392aa3-b355-4e6d-a263-38d8f274c58d",
+      "name": "Supabase Vector Store",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
+      "typeVersion": 1,
+      "position": [
+        224,
+        256
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "lExUWI44NRAbTg9k",
+          "name": "Supabase KT"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-embedding-2-preview"
+      },
+      "id": "b960f408-d0fc-4784-a63e-9dd1dd76c81a",
+      "name": "Google Gemini Embeddings",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        320,
+        528
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "ezJ2gUlHoVoW1q38",
+          "name": "Gemini(Kleber)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatDeepSeek",
+      "typeVersion": 1,
+      "position": [
+        -736,
+        432
+      ],
+      "id": "b77f3163-80b8-4390-9bd2-8abcd06bb90b",
+      "name": "DeepSeek Chat Model",
+      "credentials": {
+        "deepSeekApi": {
+          "id": "D05sGyd1M1M4IPSo",
+          "name": "DeepSeek account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -288,
+        64
+      ],
+      "id": "cad91193-e4eb-43ef-a027-4383c751a9cb",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "ezJ2gUlHoVoW1q38",
+          "name": "Gemini(Kleber)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatDeepSeek",
+      "typeVersion": 1,
+      "position": [
+        -576,
+        448
+      ],
+      "id": "901f47e8-5620-47bc-9ce8-de2d18b0dba9",
+      "name": "DeepSeek Chat Model1",
+      "credentials": {
+        "deepSeekApi": {
+          "id": "D05sGyd1M1M4IPSo",
+          "name": "DeepSeek account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        560,
+        176
+      ],
+      "id": "c2c5b7ac-35a3-41f9-851b-2b62a7212e7a",
+      "name": "Google Gemini Chat Model1",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "ezJ2gUlHoVoW1q38",
+          "name": "Gemini(Kleber)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getRows",
+        "databaseId": "tTce4CBCWb8fcYmZ",
+        "filterType": "manual",
+        "filters": {
+          "conditions": [
+            {
+              "key": "nombre",
+              "operator": "equal",
+              "value": "SUPABASE_API_KEY"
+            }
+          ]
+        }
+      },
+      "id": "get-global-vars-id-aes9s",
+      "name": "Get_Global_Variables",
+      "type": "n8n-nodes-base.n8nDataTables",
+      "typeVersion": 1,
+      "position": [
+        -800,
+        200
+      ]
+    }
+  ],
+  "connections": {
+    "Chat Trigger": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Window Buffer Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vector Store Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase Vector Store": {
+      "ai_vectorStore": [
+        [
+          {
+            "node": "Vector Store Tool",
+            "type": "ai_vectorStore",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Embeddings": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Supabase Vector Store",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DeepSeek Chat Model": {
+      "ai_languageModel": [
+        []
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DeepSeek Chat Model1": {
+      "ai_languageModel": [
+        []
+      ]
+    },
+    "Google Gemini Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Vector Store Tool",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {},
+  "versionId": "b8014be0-137e-45a8-baf6-e721b3057e7a",
+  "activeVersionId": "09cdba76-cbf2-4dfa-b776-c7b2f62964ad",
+  "versionCounter": 102,
+  "triggerCount": 1,
+  "shared": [
+    {
+      "updatedAt": "2026-04-13T09:13:44.585Z",
+      "createdAt": "2026-04-13T09:13:44.585Z",
+      "role": "workflow:owner",
+      "workflowId": "eiseWnDVUMV8L49D",
+      "projectId": "Gl0z3DNsbKkj4wmb",
+      "project": {
+        "updatedAt": "2025-07-14T00:32:57.724Z",
+        "createdAt": "2025-07-14T00:30:54.688Z",
+        "id": "Gl0z3DNsbKkj4wmb",
+        "name": "Jesus Navarrete <jesus.navarrete@satcomla.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "creatorId": "57c765b1-1447-43a1-a14d-bbeacac5d303"
+      }
+    }
+  ],
+  "tags": [],
+  "activeVersion": {
+    "updatedAt": "2026-04-13T10:02:28.000Z",
+    "createdAt": "2026-04-13T10:02:20.478Z",
+    "versionId": "09cdba76-cbf2-4dfa-b776-c7b2f62964ad",
+    "workflowId": "eiseWnDVUMV8L49D",
+    "nodes": [
+      {
+        "parameters": {
+          "public": true,
+          "options": {}
+        },
+        "id": "e7a2aba2-dac6-429c-80de-2762b16f3982",
+        "name": "Chat Trigger",
+        "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+        "typeVersion": 1.1,
+        "position": [
+          -448,
+          -128
+        ],
+        "webhookId": "d18cb030-6b23-4eaa-a721-e9d2cdab5d68"
+      },
+      {
+        "parameters": {
+          "options": {
+            "systemMessage": "Eres SARA, un asistente experto. Utiliza ÚNICAMENTE la información provista por tu herramienta de búsqueda de manuales para responder las preguntas del usuario. Si no encuentras la respuesta en la herramienta, di que no lo sabes."
+          }
+        },
+        "id": "76a61d33-90b4-4cfc-ab99-c3a871c7f1c2",
+        "name": "AI Agent",
+        "type": "@n8n/n8n-nodes-langchain.agent",
+        "typeVersion": 1.6,
+        "position": [
+          -144,
+          -144
+        ]
+      },
+      {
+        "parameters": {},
+        "id": "6b39e5bc-f173-4ae6-bc3e-b70052e29e8d",
+        "name": "Window Buffer Memory",
+        "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+        "typeVersion": 1.2,
+        "position": [
+          -96,
+          80
+        ]
+      },
+      {
+        "parameters": {
+          "name": "catalogo",
+          "description": "Utiliza esta herramienta SIEMPRE para buscar respuestas técnicas, manuales o datos de los productos cargados.",
+          "topK": "=4"
+        },
+        "id": "9bc3a3a1-3471-472d-9191-272ebc5aff60",
+        "name": "Vector Store Tool",
+        "type": "@n8n/n8n-nodes-langchain.toolVectorStore",
+        "typeVersion": 1,
+        "position": [
+          336,
+          -32
+        ]
+      },
+      {
+        "parameters": {
+          "tableName": {
+            "__rl": true,
+            "value": "vectors",
+            "mode": "id"
+          },
+          "options": {
+            "queryName": "match_vectors"
+          }
+        },
+        "id": "c9392aa3-b355-4e6d-a263-38d8f274c58d",
+        "name": "Supabase Vector Store",
+        "type": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
+        "typeVersion": 1,
+        "position": [
+          224,
+          256
+        ],
+        "credentials": {
+          "supabaseApi": {
+            "id": "lExUWI44NRAbTg9k",
+            "name": "Supabase KT"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "modelName": "models/gemini-embedding-2-preview"
+        },
+        "id": "b960f408-d0fc-4784-a63e-9dd1dd76c81a",
+        "name": "Google Gemini Embeddings",
+        "type": "@n8n/n8n-nodes-langchain.embeddingsGoogleGemini",
+        "typeVersion": 1,
+        "position": [
+          320,
+          528
+        ],
+        "credentials": {
+          "googlePalmApi": {
+            "id": "ezJ2gUlHoVoW1q38",
+            "name": "Gemini(Kleber)"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "model": "=deepseek-chat",
+          "options": {
+            "baseURL": "https://api.deepseek.com/v1"
+          }
+        },
+        "id": "7439fdea-6bca-4275-9010-adafd713e5a1",
+        "name": "DeepSeek (OpenAI Compat)",
+        "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+        "typeVersion": 1,
+        "position": [
+          -1008,
+          352
+        ],
+        "credentials": {
+          "openAiApi": {
+            "id": "4TgGi9ECBYOZaFuQ",
+            "name": "OpenAI account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "options": {}
+        },
+        "type": "@n8n/n8n-nodes-langchain.lmChatDeepSeek",
+        "typeVersion": 1,
+        "position": [
+          -336,
+          128
+        ],
+        "id": "b77f3163-80b8-4390-9bd2-8abcd06bb90b",
+        "name": "DeepSeek Chat Model",
+        "credentials": {
+          "deepSeekApi": {
+            "id": "D05sGyd1M1M4IPSo",
+            "name": "DeepSeek account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "options": {}
+        },
+        "type": "@n8n/n8n-nodes-langchain.lmChatDeepSeek",
+        "typeVersion": 1,
+        "position": [
+          560,
+          208
+        ],
+        "id": "901f47e8-5620-47bc-9ce8-de2d18b0dba9",
+        "name": "DeepSeek Chat Model1",
+        "credentials": {
+          "deepSeekApi": {
+            "id": "D05sGyd1M1M4IPSo",
+            "name": "DeepSeek account"
+          }
+        }
+      }
+    ],
+    "connections": {
+      "Chat Trigger": {
+        "main": [
+          [
+            {
+              "node": "AI Agent",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Window Buffer Memory": {
+        "ai_memory": [
+          [
+            {
+              "node": "AI Agent",
+              "type": "ai_memory",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Vector Store Tool": {
+        "ai_tool": [
+          [
+            {
+              "node": "AI Agent",
+              "type": "ai_tool",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Supabase Vector Store": {
+        "ai_vectorStore": [
+          [
+            {
+              "node": "Vector Store Tool",
+              "type": "ai_vectorStore",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Google Gemini Embeddings": {
+        "ai_embedding": [
+          [
+            {
+              "node": "Supabase Vector Store",
+              "type": "ai_embedding",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "DeepSeek (OpenAI Compat)": {
+        "ai_languageModel": [
+          []
+        ]
+      },
+      "DeepSeek Chat Model": {
+        "ai_languageModel": [
+          [
+            {
+              "node": "AI Agent",
+              "type": "ai_languageModel",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "DeepSeek Chat Model1": {
+        "ai_languageModel": [
+          [
+            {
+              "node": "Vector Store Tool",
+              "type": "ai_languageModel",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "authors": "Jesus Navarrete",
+    "name": "Version 09cdba76",
+    "description": "",
+    "autosaved": true,
+    "workflowPublishHistory": [
+      {
+        "createdAt": "2026-04-13T10:02:28.568Z",
+        "id": 822,
+        "workflowId": "eiseWnDVUMV8L49D",
+        "versionId": "09cdba76-cbf2-4dfa-b776-c7b2f62964ad",
+        "event": "activated",
+        "userId": "57c765b1-1447-43a1-a14d-bbeacac5d303"
+      }
+    ]
+  }
+}
