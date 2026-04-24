@@ -1,0 +1,256 @@
+{
+  "name": "TEMP_DEPLOY_INGESTA",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "={{$json[\"query\"][\"action\"] === \"list\" || $json[\"query\"][\"action\"] === \"download\" ? \"GET\" : \"POST\"}}",
+        "path": "deploy-ingesta",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-main",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 300],
+      "webhookId": "deploy-ingesta"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.query.action }}",
+                    "rightValue": "list",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "list"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.query.action }}",
+                    "rightValue": "download",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "download"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "id": "switch-accion",
+      "name": "Switch Acción",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "command": "ls -lah /opt/RAG/implementacion_SARA/ 2>&1"
+      },
+      "id": "cmd-listar",
+      "name": "Listar Archivos",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [700, 160]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.stdout || $json.stderr }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/plain; charset=utf-8"
+              }
+            ]
+          }
+        }
+      },
+      "id": "respond-lista",
+      "name": "Responder Lista",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [920, 160]
+    },
+    {
+      "parameters": {
+        "command": "=cat \"/opt/RAG/implementacion_SARA/{{ $('Webhook').item.json.query.file }}\" 2>&1"
+      },
+      "id": "cmd-descargar",
+      "name": "Descargar Archivo",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.stdout || $json.stderr }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/plain; charset=utf-8"
+              }
+            ]
+          }
+        }
+      },
+      "id": "respond-descarga",
+      "name": "Responder Archivo",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [920, 300]
+    },
+    {
+      "parameters": {
+        "command": "=python3 -c \"import sys; f=open('/opt/RAG/implementacion_SARA/{{ $('Webhook').item.json.query.file || 'Ingesta_PDF_WEB.py' }}', 'w'); f.write(sys.stdin.read()); f.close(); print('✅ Script desplegado correctamente.')\" <<'EOF'\n{{ $('Webhook').item.json.body }}\nEOF"
+      },
+      "id": "cmd-writescript",
+      "name": "WriteScript",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [700, 440]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.stdout || $json.stderr }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/plain; charset=utf-8"
+              }
+            ]
+          }
+        }
+      },
+      "id": "respond-deploy",
+      "name": "Responder Deploy",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [920, 440]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Switch Acción",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch Acción": {
+      "main": [
+        [
+          {
+            "node": "Listar Archivos",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Descargar Archivo",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "WriteScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Listar Archivos": {
+      "main": [
+        [
+          {
+            "node": "Responder Lista",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Descargar Archivo": {
+      "main": [
+        [
+          {
+            "node": "Responder Archivo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WriteScript": {
+      "main": [
+        [
+          {
+            "node": "Responder Deploy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "RAG"
+    }
+  ],
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "notes": "Mini gestor de archivos del servidor SARA.\nAcciones disponibles:\n- GET ?action=list → Lista todos los archivos en /opt/RAG/implementacion_SARA/\n- GET ?action=download&file=Ingesta_PDF_WEB.py → Descarga el contenido del archivo\n- POST ?action=deploy&file=MiScript.py (body=contenido) → Sube/actualiza un script en el servidor\n\nRecuerda activar el Webhook antes de usar.\nNomenclatura pendiente: renombrar a API_GestorScriptsRAG_V1"
+}

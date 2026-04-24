@@ -1,0 +1,216 @@
+﻿{
+    "settings":  {
+                     "executionOrder":  "v1"
+                 },
+    "name":  "API_IngestaArchivos_V1",
+    "connections":  {
+                        "Webhook":  {
+                                        "main":  [
+                                                     [
+                                                         {
+                                                             "node":  "Subir a Drive",
+                                                             "type":  "main",
+                                                             "index":  0
+                                                         }
+                                                     ]
+                                                 ]
+                                    },
+                        "Subir a Drive":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "node":  "Normalizar Nombre",
+                                                                   "type":  "main",
+                                                                   "index":  0
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Normalizar Nombre":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "node":  "Guardar en Disco",
+                                                                       "type":  "main",
+                                                                       "index":  0
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Guardar en Disco":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "node":  "Ingesta File",
+                                                                      "type":  "main",
+                                                                      "index":  0
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Ingesta File":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "node":  "Validar BDD",
+                                                                  "type":  "main",
+                                                                  "index":  0
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Validar BDD":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "node":  "Responder Ingesta",
+                                                                 "type":  "main",
+                                                                 "index":  0
+                                                             }
+                                                         ]
+                                                     ]
+                                        }
+                    },
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "httpMethod":  "POST",
+                                         "path":  "Ingesta-Archivos",
+                                         "responseMode":  "responseNode",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "a948a393-fc94-49b2-8ff8-514a0d7235b8",
+                      "name":  "Webhook",
+                      "type":  "n8n-nodes-base.webhook",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       -2432,
+                                       -96
+                                   ],
+                      "webhookId":  "27c1e2a5-a258-4915-8d5b-aab452737e4c"
+                  },
+                  {
+                      "parameters":  {
+                                         "driveId":  {
+                                                         "__rl":  true,
+                                                         "value":  "My Drive",
+                                                         "mode":  "list"
+                                                     },
+                                         "folderId":  {
+                                                          "__rl":  true,
+                                                          "value":  "10z7R7og0QsD0ZUpP11kXs-q-EeC4adL5",
+                                                          "mode":  "list"
+                                                      },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "8e6345f6-ede9-43d0-83e8-034b8b7eecee",
+                      "name":  "Subir a Drive",
+                      "type":  "n8n-nodes-base.googleDrive",
+                      "typeVersion":  3,
+                      "position":  [
+                                       -2208,
+                                       -96
+                                   ],
+                      "credentials":  {
+                                          "googleDriveOAuth2Api":  {
+                                                                       "id":  "twv7bpvuhSpK2Fkz",
+                                                                       "name":  "Google Drive KT"
+                                                                   }
+                                      },
+                      "continueOnFail":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const items = $input.all();\n\nfor (let i = 0; i \u003c items.length; i++) {\n  const safeFilename = items[i].json.name.normalize(\u0027NFC\u0027).replace(/\\s+/g, \u0027_\u0027);\n  items[i].json.nombre_archivo_limpio = safeFilename;\n}\n\nreturn items;"
+                                     },
+                      "id":  "c2b34ae4-fee4-40d4-aa44-df6cbfbe25a2",
+                      "name":  "Normalizar Nombre",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       -1984,
+                                       -96
+                                   ],
+                      "continueOnFail":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const fs = require(\u0027fs\u0027);\nconst items = $input.all();\n\nfor (let i = 0; i \u003c items.length; i++) {\n  const binaryBuffer = await this.helpers.getBinaryDataBuffer(i, \u0027data\u0027);\n  const safeFilename = $(\u0027Normalizar Nombre\u0027).item.json.nombre_archivo_limpio || \u0027file_tmp\u0027;\n  const filePath = \u0027/tmp/\u0027 + safeFilename;\n  \n  fs.writeFileSync(filePath, binaryBuffer);\n  \n  items[i].json.filePath = filePath;\n}\n\nreturn items;"
+                                     },
+                      "id":  "25d4551f-11f6-4c1d-b15c-911aa83bf30a",
+                      "name":  "Guardar en Disco",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       -1760,
+                                       -96
+                                   ],
+                      "continueOnFail":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "command":  "=python3 /opt/RAG/implementacion_SARA/Ingesta_PDF_WEB.py --file=\"{{ $(\u0027Guardar en Disco\u0027).item.json.filePath }}\" --source=\"{{ $(\u0027Normalizar Nombre\u0027).item.json.name || $(\u0027Webhook\u0027).item.json.query.name }}\" --url=\"{{ $(\u0027Subir a Drive\u0027).item.json.webViewLink }}\" --negocio=\"tinkay\" --visibilidad=\"publico\" --user=\"admin@tinkay.com\""
+                                     },
+                      "id":  "9b2f0d56-8d43-4a25-bd0b-f48dc48507ce",
+                      "name":  "Ingesta File",
+                      "type":  "n8n-nodes-base.executeCommand",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -1536,
+                                       -96
+                                   ],
+                      "continueOnFail":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "SELECT * FROM rag.vectors LIMIT 1;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ $(\u0027Subir a Drive\u0027).item.json.webViewLink }}"
+                                                     }
+                                     },
+                      "id":  "94c492fb-2530-49c9-ade6-219c25c2cb99",
+                      "name":  "Validar BDD",
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -1312,
+                                       -96
+                                   ],
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "FaUacjYgtrgjH96Z",
+                                                           "name":  "Postgres KT Free IMUm7zBFmxNuggNj"
+                                                       }
+                                      },
+                      "continueOnFail":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "options":  {
+                                                         "responseHeaders":  {
+                                                                                 "entries":  [
+                                                                                                 {
+                                                                                                     "name":  "Content-Type",
+                                                                                                     "value":  "application/json"
+                                                                                                 }
+                                                                                             ]
+                                                                             }
+                                                     },
+                                         "responseBody":  "={{ @{parameters=; id=a948a393-fc94-49b2-8ff8-514a0d7235b9; name=Responder Ingesta; type=n8n-nodes-base.respondToWebhook; typeVersion=1; position=System.Object[]}[\u0027Ingesta File\u0027].json }}"
+                                     },
+                      "id":  "a948a393-fc94-49b2-8ff8-514a0d7235b9",
+                      "name":  "Responder Ingesta",
+                      "type":  "n8n-nodes-base.respondToWebhook",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -1088,
+                                       -96
+                                   ]
+                  }
+              ]
+}

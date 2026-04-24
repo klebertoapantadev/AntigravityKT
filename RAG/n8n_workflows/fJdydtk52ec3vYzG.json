@@ -1,0 +1,118 @@
+{
+  "name": "AUX_GetFiles_<V1>",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "GetFiles",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook-01",
+      "name": "Webhook GET",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [100, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Obtener el parametro fileName del query string\nconst query = $input.item.json.query || {};\nconst fileName = query.fileName || '';\nreturn { fileName, solicitadoArchivo: fileName !== '' };"
+      },
+      "id": "code-parse",
+      "name": "Parsear Parametros",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [350, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.fileName }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "id": "if-01",
+      "name": "Verificar Nombre Archivo",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [600, 200]
+    },
+    {
+      "parameters": {
+        "command": "ls -1 /opt/RAG/implementacion_SARA/"
+      },
+      "id": "cmd-list",
+      "name": "Listar Archivos del Servidor",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [850, 350]
+    },
+    {
+      "parameters": {
+        "jsCode": "const stdout = $input.item.json.stdout || '';\nconst archivos = stdout.split('\\n').map(f => f.trim()).filter(f => f);\nreturn { archivos, total: archivos.length, directorio: '/opt/RAG/implementacion_SARA/' };"
+      },
+      "id": "code-list",
+      "name": "Formatear Lista",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, 350]
+    },
+    {
+      "parameters": {
+        "command": "=cat \"/opt/RAG/implementacion_SARA/{{ $json.fileName }}\" | base64 -w 0"
+      },
+      "id": "cmd-read",
+      "name": "Leer Archivo en Base64",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [850, 80],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const resultado = $input.item.json;\nconst stdout = (resultado.stdout || '').trim();\nconst exitCode = resultado.exitCode;\n\nif (exitCode !== 0 || !stdout) {\n  return { \n    error: true, \n    mensaje: 'Archivo no encontrado o error al leerlo',\n    detalles: resultado.stderr || 'Verifica el nombre del archivo'\n  };\n}\n\n// Decodificar el base64 de vuelta al texto original\nconst contenido = Buffer.from(stdout, 'base64').toString('utf-8');\nreturn { contenido, archivoLeido: true, bytes: contenido.length };"
+      },
+      "id": "code-read",
+      "name": "Decodificar y Devolver Archivo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, 80]
+    }
+  ],
+  "connections": {
+    "Webhook GET": {
+      "main": [
+        [{ "node": "Parsear Parametros", "type": "main", "index": 0 }]
+      ]
+    },
+    "Parsear Parametros": {
+      "main": [
+        [{ "node": "Verificar Nombre Archivo", "type": "main", "index": 0 }]
+      ]
+    },
+    "Verificar Nombre Archivo": {
+      "main": [
+        [{ "node": "Leer Archivo en Base64", "type": "main", "index": 0 }],
+        [{ "node": "Listar Archivos del Servidor", "type": "main", "index": 0 }]
+      ]
+    },
+    "Listar Archivos del Servidor": {
+      "main": [
+        [{ "node": "Formatear Lista", "type": "main", "index": 0 }]
+      ]
+    },
+    "Leer Archivo en Base64": {
+      "main": [
+        [{ "node": "Decodificar y Devolver Archivo", "type": "main", "index": 0 }],
+        [{ "node": "Decodificar y Devolver Archivo", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

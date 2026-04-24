@@ -448,10 +448,10 @@ async def process_and_insert(
     """Genera embeddings y los inserta en rag.vectors."""
     total = len(text_items)
     if total == 0:
-        print("⚠️ No hay chunks para procesar.", flush=True)
+        print(f"⚠️ No hay chunks para procesar para la fuente: {source_name}", flush=True)
         return 0
 
-    print(f"📊 {total} chunks de texto. Generando embeddings...", flush=True)
+    print(f"📊 {total} chunks de texto detectados. Generando embeddings...", flush=True)
 
     embed_items = [
         {"contents": item["text"], "meta": item}
@@ -489,13 +489,28 @@ async def process_and_insert(
 
     # Inserción en batches
     if vectors:
-        print(f"💾 Insertando {len(vectors)} vectores en rag.vectors...", flush=True)
-        for i in range(0, len(vectors), BATCH_INSERT_SIZE):
-            batch = vectors[i: i + BATCH_INSERT_SIZE]
-            sb_client.schema("rag").table("vectors").insert(batch).execute()
-        print(f"✅ {len(vectors)} vectores insertados exitosamente.", flush=True)
+        print(f"💾 Intentando insertar {len(vectors)} vectores en rag.vectors (source_url: {source_url})...", flush=True)
+        try:
+            for i in range(0, len(vectors), BATCH_INSERT_SIZE):
+                batch = vectors[i: i + BATCH_INSERT_SIZE]
+                print(f"🚀 Enviando lote {i//BATCH_INSERT_SIZE + 1} ({len(batch)} vectores)...", flush=True)
+                res = sb_client.schema("rag").table("vectors").insert(batch).execute()
+                
+                # En supabase-py v2, execute() lanza excepciones para errores HTTP, 
+                # pero en v1 o con ciertos códigos puede devolver un objeto con error.
+                if hasattr(res, 'error') and res.error:
+                    print(f"❌ Error de Supabase detectado en respuesta: {res.error}", flush=True)
+            
+            print(f"✅ {len(vectors)} vectores insertados correctamente.", flush=True)
+        except Exception as e:
+            print(f"❌ Error crítico durante la inserción: {str(e)}", flush=True)
+            # Intentar ver si hay más info (PostgrestError)
+            if hasattr(e, 'message'): print(f"Mensaje: {e.message}", flush=True)
+            if hasattr(e, 'details'): print(f"Detalles: {e.details}", flush=True)
+            if hasattr(e, 'hint'):    print(f"Sugerencia: {e.hint}", flush=True)
+            raise
     else:
-        print("⚠️ No se generaron vectores válidos.", flush=True)
+        print("⚠️ No se generaron vectores válidos tras el proceso de embedding.", flush=True)
 
     return len(vectors)
 

@@ -1,0 +1,188 @@
+﻿{
+    "updatedAt":  "2026-04-23T12:41:45.377Z",
+    "createdAt":  "2026-04-22T23:23:01.438Z",
+    "id":  "CjkFokToS3unpsRY",
+    "name":  "Form_IngestaArchivos",
+    "description":  null,
+    "active":  true,
+    "isArchived":  false,
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "formTitle":  "Carga Archivos",
+                                         "formDescription":  "Solo PDF / MD / TXT",
+                                         "formFields":  {
+                                                            "values":  [
+                                                                           {
+                                                                               "fieldLabel":  "Archivo",
+                                                                               "fieldType":  "file",
+                                                                               "acceptFileTypes":  ".pdf,.md,.txt"
+                                                                           }
+                                                                       ]
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.formTrigger",
+                      "typeVersion":  2.5,
+                      "position":  [
+                                       -272,
+                                       -16
+                                   ],
+                      "id":  "5e3f58fb-3f13-47c5-9ea4-d052120551b6",
+                      "name":  "On form submission",
+                      "webhookId":  "91624005-6712-4469-ae03-545313229646"
+                  },
+                  {
+                      "parameters":  {
+                                         "method":  "POST",
+                                         "url":  "https://sara.mysatcomla.com/webhook/Ingesta-Archivos",
+                                         "sendBody":  true,
+                                         "contentType":  "binaryData",
+                                         "inputDataFieldName":  "Archivo",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.4,
+                      "position":  [
+                                       80,
+                                       -64
+                                   ],
+                      "id":  "f4d0a34d-2f1c-41a5-b943-106a874fe98f",
+                      "name":  "HTTP Request"
+                  }
+              ],
+    "connections":  {
+                        "On form submission":  {
+                                                   "main":  [
+                                                                [
+                                                                    {
+                                                                        "node":  "HTTP Request",
+                                                                        "type":  "main",
+                                                                        "index":  0
+                                                                    }
+                                                                ]
+                                                            ]
+                                               }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "binaryMode":  "separate"
+                 },
+    "staticData":  null,
+    "meta":  null,
+    "pinData":  {
+
+                },
+    "versionId":  "0b1a7074-d430-4369-9809-5b704872b56a",
+    "activeVersionId":  "0b1a7074-d430-4369-9809-5b704872b56a",
+    "versionCounter":  27,
+    "triggerCount":  1,
+    "shared":  [
+                   {
+                       "updatedAt":  "2026-04-22T23:23:01.441Z",
+                       "createdAt":  "2026-04-22T23:23:01.441Z",
+                       "role":  "workflow:owner",
+                       "workflowId":  "CjkFokToS3unpsRY",
+                       "projectId":  "Gl0z3DNsbKkj4wmb",
+                       "project":  {
+                                       "updatedAt":  "2025-07-14T00:32:57.724Z",
+                                       "createdAt":  "2025-07-14T00:30:54.688Z",
+                                       "id":  "Gl0z3DNsbKkj4wmb",
+                                       "name":  "Jesus Navarrete \u003cjesus.navarrete@satcomla.com\u003e",
+                                       "type":  "personal",
+                                       "icon":  null,
+                                       "description":  null,
+                                       "creatorId":  "57c765b1-1447-43a1-a14d-bbeacac5d303"
+                                   }
+                   }
+               ],
+    "tags":  [
+
+             ],
+    "activeVersion":  {
+                          "updatedAt":  "2026-04-22T23:29:16.000Z",
+                          "createdAt":  "2026-04-22T23:29:08.587Z",
+                          "versionId":  "0b1a7074-d430-4369-9809-5b704872b56a",
+                          "workflowId":  "CjkFokToS3unpsRY",
+                          "nodes":  [
+                                        {
+                                            "parameters":  {
+                                                               "formTitle":  "Carga Archivos",
+                                                               "formDescription":  "Solo PDF / MD / TXT",
+                                                               "formFields":  {
+                                                                                  "values":  [
+                                                                                                 {
+                                                                                                     "fieldLabel":  "Archivo",
+                                                                                                     "fieldType":  "file",
+                                                                                                     "acceptFileTypes":  ".pdf,.md,.txt"
+                                                                                                 }
+                                                                                             ]
+                                                                              },
+                                                               "options":  {
+
+                                                                           }
+                                                           },
+                                            "type":  "n8n-nodes-base.formTrigger",
+                                            "typeVersion":  2.5,
+                                            "position":  [
+                                                             -272,
+                                                             -16
+                                                         ],
+                                            "id":  "5e3f58fb-3f13-47c5-9ea4-d052120551b6",
+                                            "name":  "On form submission",
+                                            "webhookId":  "91624005-6712-4469-ae03-545313229646"
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "method":  "POST",
+                                                               "url":  "https://sara.mysatcomla.com/webhook/Ingesta-Archivos",
+                                                               "sendBody":  true,
+                                                               "contentType":  "binaryData",
+                                                               "inputDataFieldName":  "Archivo",
+                                                               "options":  {
+
+                                                                           }
+                                                           },
+                                            "type":  "n8n-nodes-base.httpRequest",
+                                            "typeVersion":  4.4,
+                                            "position":  [
+                                                             80,
+                                                             -64
+                                                         ],
+                                            "id":  "f4d0a34d-2f1c-41a5-b943-106a874fe98f",
+                                            "name":  "HTTP Request"
+                                        }
+                                    ],
+                          "connections":  {
+                                              "On form submission":  {
+                                                                         "main":  [
+                                                                                      [
+                                                                                          {
+                                                                                              "node":  "HTTP Request",
+                                                                                              "type":  "main",
+                                                                                              "index":  0
+                                                                                          }
+                                                                                      ]
+                                                                                  ]
+                                                                     }
+                                          },
+                          "authors":  "Jesus Navarrete",
+                          "name":  "Version 0b1a7074",
+                          "description":  "",
+                          "autosaved":  false,
+                          "workflowPublishHistory":  [
+                                                         {
+                                                             "createdAt":  "2026-04-22T23:29:16.695Z",
+                                                             "id":  1100,
+                                                             "workflowId":  "CjkFokToS3unpsRY",
+                                                             "versionId":  "0b1a7074-d430-4369-9809-5b704872b56a",
+                                                             "event":  "activated",
+                                                             "userId":  "57c765b1-1447-43a1-a14d-bbeacac5d303"
+                                                         }
+                                                     ]
+                      }
+}
