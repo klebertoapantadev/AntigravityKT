@@ -1,0 +1,46 @@
+{
+  "name": "TEMP_DEPLOY_INGESTA",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "deploy-ingesta",
+        "httpMethod": "POST",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [112, 208],
+      "id": "d9bb2cd5-9e98-42b0-a78c-e8b942cb7709",
+      "webhookId": "654bf619-a53c-44b4-9e6a-3e85963a9e33",
+      "disabled": false
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst items = $input.all();\nfor (let i = 0; i < items.length; i++) {\n  try {\n    // Intentar obtener de binario primero\n    let buffer;\n    try {\n      buffer = await this.helpers.getBinaryDataBuffer(i, 'data');\n    } catch (e) {\n      // Si no hay binario, usar el body (si es texto)\n      const content = items[i].json.body || items[i].json.query.content;\n      buffer = Buffer.from(content);\n    }\n    \n    const filePath = '/opt/RAG/implementacion_SARA/Ingesta_PDF_WEB.py';\n    fs.writeFileSync(filePath, buffer);\n    items[i].json.success = true;\n    items[i].json.size = buffer.length;\n  } catch (err) {\n    items[i].json.success = false;\n    items[i].json.error = err.message;\n  }\n}\nreturn items;"
+      },
+      "name": "WriteScript",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [336, 208],
+      "id": "8844672c-2d17-404f-ae42-db85fe33c82c"
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "WriteScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

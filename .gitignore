@@ -19,7 +19,10 @@ yarn-error.log*
 # Temporales y Pruebas
 db_temp/
 /coverage
+# Permitir flujos de n8n pero ignorar otros JSON
 *.json
+!RAG/n8n_workflows/*.json
+
 
 # Vercel
 .vercel
