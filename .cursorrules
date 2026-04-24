@@ -16,11 +16,19 @@ Este archivo contiene las reglas específicas y estándares técnicos para el ec
   * Si el JSON exportado no contiene un campo `"id"`, se debe solicitar al usuario el ID del flujo desde la interfaz de n8n antes de guardarlo.
   * Para identificar a qué flujo corresponde cada archivo, consultar el campo `"name"` dentro del propio JSON.
 
+- **Prohibición de Respaldos Manuales y Versionamiento Local:**
+  NUNCA crear múltiples versiones de un mismo archivo o flujo (ej: `flujo_v1.json`, `flujo_final.json`, `flujo_debug.json`). Solo debe existir un único archivo por recurso (usando su ID oficial para flujos n8n). El historial de cambios debe ser gestionado exclusivamente por Git. Cualquier archivo temporal o de depuración debe ser eliminado tras su uso o ignorado vía `.gitignore`.
+
+- **Sanitización de Secretos Obligatoria:**
+  Antes de guardar o realizar un commit de cualquier archivo JSON de n8n, se **DEBE** verificar y eliminar (o reemplazar con placeholders como `{{REDACTED}}`) cualquier secreto hardcodeado, API Key, token JWT o credencial. El fallo en esta sanitización bloquea el flujo de trabajo y compromete la seguridad.
+
 - **Comando "Actualiza el repositorio del RAG":** 
   Cuando el usuario ingrese exactamente esta solicitud, el agente deberá:
   1. Extraer o recopilar las últimas versiones operativas de los flujos de n8n y scripts de Supabase.
-  2. Guardar y sobrescribir estos archivos en sus respectivos directorios dentro de la carpeta `RAG/`, usando el ID del flujo como nombre de archivo.
-  3. Realizar un commit en GIT documentando los cambios en español y subir (push) los cambios al repositorio remoto.
+  2. Sanitizar rigurosamente los archivos para eliminar secretos.
+  3. Guardar y sobrescribir estos archivos en sus respectivos directorios dentro de la carpeta `RAG/`, usando únicamente el ID del flujo como nombre de archivo (sobrescribiendo la versión anterior).
+  4. Realizar un commit en GIT documentando los cambios en español y subir (push) los cambios al repositorio remoto.
+
 
 ## 2. Consistencia del Catálogo
 - El archivo `catalogoTinkay.MD` es la fuente de verdad para los productos. Cualquier cambio en la oferta comercial debe reflejarse en este archivo para asegurar que la base de conocimientos del RAG esté siempre actualizada.

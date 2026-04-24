@@ -1,256 +1,170 @@
-{
-  "name": "TEMP_DEPLOY_INGESTA",
-  "nodes": [
-    {
-      "parameters": {
-        "httpMethod": "={{$json[\"query\"][\"action\"] === \"list\" || $json[\"query\"][\"action\"] === \"download\" ? \"GET\" : \"POST\"}}",
-        "path": "deploy-ingesta",
-        "responseMode": "responseNode",
-        "options": {}
-      },
-      "id": "webhook-main",
-      "name": "Webhook",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2,
-      "position": [260, 300],
-      "webhookId": "deploy-ingesta"
-    },
-    {
-      "parameters": {
-        "rules": {
-          "values": [
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict"
-                },
-                "conditions": [
+﻿{
+    "updatedAt":  "2026-04-24T12:47:50.607Z",
+    "createdAt":  "2026-04-22T16:31:27.463Z",
+    "id":  "9X5Ohy3YqmKRyk05",
+    "name":  "TEMP_DEPLOY_INGESTA",
+    "description":  null,
+    "active":  true,
+    "isArchived":  false,
+    "nodes":  [
                   {
-                    "leftValue": "={{ $json.query.action }}",
-                    "rightValue": "list",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "list"
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict"
-                },
-                "conditions": [
+                      "parameters":  {
+                                         "path":  "deploy-ingesta",
+                                         "httpMethod":  "POST",
+                                         "responseMode":  "lastNode",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "name":  "Webhook",
+                      "type":  "n8n-nodes-base.webhook",
+                      "typeVersion":  1,
+                      "position":  [
+                                       112,
+                                       208
+                                   ],
+                      "id":  "d9bb2cd5-9e98-42b0-a78c-e8b942cb7709",
+                      "webhookId":  "654bf619-a53c-44b4-9e6a-3e85963a9e33",
+                      "disabled":  false
+                  },
                   {
-                    "leftValue": "={{ $json.query.action }}",
-                    "rightValue": "download",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
+                      "parameters":  {
+                                         "jsCode":  "const fs = require(\u0027fs\u0027);\nconst items = $input.all();\nfor (let i = 0; i \u003c items.length; i++) {\n  try {\n    // Intentar obtener de binario primero\n    let buffer;\n    try {\n      buffer = await this.helpers.getBinaryDataBuffer(i, \u0027data\u0027);\n    } catch (e) {\n      // Si no hay binario, usar el body (si es texto)\n      const content = items[i].json.body || items[i].json.query.content;\n      buffer = Buffer.from(content);\n    }\n    \n    const filePath = \u0027/opt/RAG/implementacion_SARA/Ingesta_PDF_WEB.py\u0027;\n    fs.writeFileSync(filePath, buffer);\n    items[i].json.success = true;\n    items[i].json.size = buffer.length;\n  } catch (err) {\n    items[i].json.success = false;\n    items[i].json.error = err.message;\n  }\n}\nreturn items;"
+                                     },
+                      "name":  "WriteScript",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       336,
+                                       208
+                                   ],
+                      "id":  "8844672c-2d17-404f-ae42-db85fe33c82c"
                   }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "download"
-            }
-          ]
-        },
-        "options": {
-          "fallbackOutput": "extra"
-        }
-      },
-      "id": "switch-accion",
-      "name": "Switch Acción",
-      "type": "n8n-nodes-base.switch",
-      "typeVersion": 3,
-      "position": [480, 300]
-    },
-    {
-      "parameters": {
-        "command": "ls -lah /opt/RAG/implementacion_SARA/ 2>&1"
-      },
-      "id": "cmd-listar",
-      "name": "Listar Archivos",
-      "type": "n8n-nodes-base.executeCommand",
-      "typeVersion": 1,
-      "position": [700, 160]
-    },
-    {
-      "parameters": {
-        "respondWith": "text",
-        "responseBody": "={{ $json.stdout || $json.stderr }}",
-        "options": {
-          "responseHeaders": {
-            "entries": [
-              {
-                "name": "Content-Type",
-                "value": "text/plain; charset=utf-8"
-              }
-            ]
-          }
-        }
-      },
-      "id": "respond-lista",
-      "name": "Responder Lista",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1,
-      "position": [920, 160]
-    },
-    {
-      "parameters": {
-        "command": "=cat \"/opt/RAG/implementacion_SARA/{{ $('Webhook').item.json.query.file }}\" 2>&1"
-      },
-      "id": "cmd-descargar",
-      "name": "Descargar Archivo",
-      "type": "n8n-nodes-base.executeCommand",
-      "typeVersion": 1,
-      "position": [700, 300]
-    },
-    {
-      "parameters": {
-        "respondWith": "text",
-        "responseBody": "={{ $json.stdout || $json.stderr }}",
-        "options": {
-          "responseHeaders": {
-            "entries": [
-              {
-                "name": "Content-Type",
-                "value": "text/plain; charset=utf-8"
-              }
-            ]
-          }
-        }
-      },
-      "id": "respond-descarga",
-      "name": "Responder Archivo",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1,
-      "position": [920, 300]
-    },
-    {
-      "parameters": {
-        "command": "=python3 -c \"import sys; f=open('/opt/RAG/implementacion_SARA/{{ $('Webhook').item.json.query.file || 'Ingesta_PDF_WEB.py' }}', 'w'); f.write(sys.stdin.read()); f.close(); print('✅ Script desplegado correctamente.')\" <<'EOF'\n{{ $('Webhook').item.json.body }}\nEOF"
-      },
-      "id": "cmd-writescript",
-      "name": "WriteScript",
-      "type": "n8n-nodes-base.executeCommand",
-      "typeVersion": 1,
-      "position": [700, 440]
-    },
-    {
-      "parameters": {
-        "respondWith": "text",
-        "responseBody": "={{ $json.stdout || $json.stderr }}",
-        "options": {
-          "responseHeaders": {
-            "entries": [
-              {
-                "name": "Content-Type",
-                "value": "text/plain; charset=utf-8"
-              }
-            ]
-          }
-        }
-      },
-      "id": "respond-deploy",
-      "name": "Responder Deploy",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1,
-      "position": [920, 440]
-    }
-  ],
-  "connections": {
-    "Webhook": {
-      "main": [
-        [
-          {
-            "node": "Switch Acción",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Switch Acción": {
-      "main": [
-        [
-          {
-            "node": "Listar Archivos",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Descargar Archivo",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "WriteScript",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Listar Archivos": {
-      "main": [
-        [
-          {
-            "node": "Responder Lista",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Descargar Archivo": {
-      "main": [
-        [
-          {
-            "node": "Responder Archivo",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "WriteScript": {
-      "main": [
-        [
-          {
-            "node": "Responder Deploy",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    }
-  },
-  "active": false,
-  "settings": {
-    "executionOrder": "v1"
-  },
-  "tags": [
-    {
-      "name": "RAG"
-    }
-  ],
-  "meta": {
-    "templateCredsSetupCompleted": true
-  },
-  "notes": "Mini gestor de archivos del servidor SARA.\nAcciones disponibles:\n- GET ?action=list → Lista todos los archivos en /opt/RAG/implementacion_SARA/\n- GET ?action=download&file=Ingesta_PDF_WEB.py → Descarga el contenido del archivo\n- POST ?action=deploy&file=MiScript.py (body=contenido) → Sube/actualiza un script en el servidor\n\nRecuerda activar el Webhook antes de usar.\nNomenclatura pendiente: renombrar a API_GestorScriptsRAG_V1"
+              ],
+    "connections":  {
+                        "Webhook":  {
+                                        "main":  [
+                                                     [
+                                                         {
+                                                             "node":  "WriteScript",
+                                                             "type":  "main",
+                                                             "index":  0
+                                                         }
+                                                     ]
+                                                 ]
+                                    }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "callerPolicy":  "workflowsFromSameOwner",
+                     "availableInMCP":  false,
+                     "binaryMode":  "separate"
+                 },
+    "staticData":  null,
+    "meta":  null,
+    "pinData":  {
+
+                },
+    "versionId":  "274f0cca-e521-4ac1-b088-b72155310a90",
+    "activeVersionId":  "274f0cca-e521-4ac1-b088-b72155310a90",
+    "versionCounter":  115,
+    "triggerCount":  1,
+    "shared":  [
+                   {
+                       "updatedAt":  "2026-04-22T16:31:27.467Z",
+                       "createdAt":  "2026-04-22T16:31:27.467Z",
+                       "role":  "workflow:owner",
+                       "workflowId":  "9X5Ohy3YqmKRyk05",
+                       "projectId":  "Gl0z3DNsbKkj4wmb",
+                       "project":  {
+                                       "updatedAt":  "2025-07-14T00:32:57.724Z",
+                                       "createdAt":  "2025-07-14T00:30:54.688Z",
+                                       "id":  "Gl0z3DNsbKkj4wmb",
+                                       "name":  "Jesus Navarrete \u003cjesus.navarrete@satcomla.com\u003e",
+                                       "type":  "personal",
+                                       "icon":  null,
+                                       "description":  null,
+                                       "creatorId":  "57c765b1-1447-43a1-a14d-bbeacac5d303"
+                                   }
+                   }
+               ],
+    "tags":  [
+
+             ],
+    "activeVersion":  {
+                          "updatedAt":  "2026-04-24T12:47:50.607Z",
+                          "createdAt":  "2026-04-24T12:47:50.607Z",
+                          "versionId":  "274f0cca-e521-4ac1-b088-b72155310a90",
+                          "workflowId":  "9X5Ohy3YqmKRyk05",
+                          "nodes":  [
+                                        {
+                                            "parameters":  {
+                                                               "path":  "deploy-ingesta",
+                                                               "httpMethod":  "POST",
+                                                               "responseMode":  "lastNode",
+                                                               "options":  {
+
+                                                                           }
+                                                           },
+                                            "name":  "Webhook",
+                                            "type":  "n8n-nodes-base.webhook",
+                                            "typeVersion":  1,
+                                            "position":  [
+                                                             112,
+                                                             208
+                                                         ],
+                                            "id":  "d9bb2cd5-9e98-42b0-a78c-e8b942cb7709",
+                                            "webhookId":  "654bf619-a53c-44b4-9e6a-3e85963a9e33",
+                                            "disabled":  false
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "jsCode":  "const fs = require(\u0027fs\u0027);\nconst items = $input.all();\nfor (let i = 0; i \u003c items.length; i++) {\n  try {\n    // Intentar obtener de binario primero\n    let buffer;\n    try {\n      buffer = await this.helpers.getBinaryDataBuffer(i, \u0027data\u0027);\n    } catch (e) {\n      // Si no hay binario, usar el body (si es texto)\n      const content = items[i].json.body || items[i].json.query.content;\n      buffer = Buffer.from(content);\n    }\n    \n    const filePath = \u0027/opt/RAG/implementacion_SARA/Ingesta_PDF_WEB.py\u0027;\n    fs.writeFileSync(filePath, buffer);\n    items[i].json.success = true;\n    items[i].json.size = buffer.length;\n  } catch (err) {\n    items[i].json.success = false;\n    items[i].json.error = err.message;\n  }\n}\nreturn items;"
+                                                           },
+                                            "name":  "WriteScript",
+                                            "type":  "n8n-nodes-base.code",
+                                            "typeVersion":  2,
+                                            "position":  [
+                                                             336,
+                                                             208
+                                                         ],
+                                            "id":  "8844672c-2d17-404f-ae42-db85fe33c82c"
+                                        }
+                                    ],
+                          "connections":  {
+                                              "Webhook":  {
+                                                              "main":  [
+                                                                           [
+                                                                               {
+                                                                                   "node":  "WriteScript",
+                                                                                   "type":  "main",
+                                                                                   "index":  0
+                                                                               }
+                                                                           ]
+                                                                       ]
+                                                          }
+                                          },
+                          "authors":  "Jesus Navarrete",
+                          "name":  null,
+                          "description":  null,
+                          "autosaved":  false,
+                          "workflowPublishHistory":  [
+                                                         {
+                                                             "createdAt":  "2026-04-24T12:47:50.643Z",
+                                                             "id":  1223,
+                                                             "workflowId":  "9X5Ohy3YqmKRyk05",
+                                                             "versionId":  "274f0cca-e521-4ac1-b088-b72155310a90",
+                                                             "event":  "activated",
+                                                             "userId":  "57c765b1-1447-43a1-a14d-bbeacac5d303"
+                                                         },
+                                                         {
+                                                             "createdAt":  "2026-04-24T12:47:50.629Z",
+                                                             "id":  1222,
+                                                             "workflowId":  "9X5Ohy3YqmKRyk05",
+                                                             "versionId":  "274f0cca-e521-4ac1-b088-b72155310a90",
+                                                             "event":  "deactivated",
+                                                             "userId":  "57c765b1-1447-43a1-a14d-bbeacac5d303"
+                                                         }
+                                                     ]
+                      }
 }

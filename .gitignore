@@ -30,3 +30,12 @@ db_temp/
 # Otros
 .DS_Store
 *.pem
+
+# Reglas de limpieza RAG Tinkay
+RAG/scripts/*.b64
+RAG/n8n_workflows/execution_*.json
+RAG/n8n_workflows/executions_*.json
+RAG/n8n_workflows/workflow_*.json
+RAG/n8n_workflows/*_final*.json
+RAG/n8n_workflows/*_debug*.json
+RAG/n8n_workflows/*_v[0-9]*.json

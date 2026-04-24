@@ -1,1538 +1,1549 @@
-{
-  "updatedAt": "2026-04-22T13:36:37.772Z",
-  "createdAt": "2026-04-19T13:30:45.720Z",
-  "id": "3e30HCu1WMRq14oF",
-  "name": "TinkayRAG_Consulta_V1",
-  "description": null,
-  "active": true,
-  "isArchived": false,
-  "nodes": [
-    {
-      "parameters": {
-        "workflowInputs": {
-          "values": [
-            {
-              "name": "query"
-            },
-            {
-              "name": "chat_id"
-            }
-          ]
-        }
-      },
-      "id": "b093b0ed-308b-4aea-b39c-772af845294e",
-      "name": "input",
-      "type": "n8n-nodes-base.executeWorkflowTrigger",
-      "typeVersion": 1.1,
-      "position": [
-        -1280,
-        2672
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "const results = $input.all().map(i => i.json).filter(r => r && r.id);\nconst meaningful = results.filter(r => (r.content || '').trim().length >= 40);\n\n// Enviamos el top 8 para reranking\nconst candidates = meaningful\n  .sort((a, b) => (b.combined_score || 0) - (a.combined_score || 0))\n  .slice(0, 8);\n\nconst formatted = candidates.map((c, i) => `[FRAGMENTO #${i}]\\n${c.content}`).join('\\n\\n');\n\nreturn [{ json: { \n  query: $('Extraer_Plan').item.json.querySearch || $('input').item.json.query,\n  candidates_text: formatted,\n  candidates_raw: candidates,\n  all_results: results\n} }];"
-      },
-      "id": "41a6ea80-e399-47d8-991a-af56995de105",
-      "name": "Filtrar_Candidatos",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        0,
-        2688
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "const inputData = $('Filtrar_Candidatos').item.json;\nconst candidates = inputData.candidates_raw;\nconst allResults = inputData.all_results;\n\ntry {\n  // CORRECCIÓN: Leer de $json.output que es donde el AI Agent entrega el texto\n  const cleanText = $json.output || '';\n  const data = JSON.parse(cleanText);\n  const selectedIndices = data.indices || [];\n  \n  const relevantResults = selectedIndices.map(i => candidates[i]).filter(Boolean);\n  if (relevantResults.length === 0 && candidates.length > 0) {\n    relevantResults.push(candidates[0]);\n  }\n\n  const seen = new Set();\n  const sourceUrls = [], pageNumbers = [], excludeIds = allResults.map(r => r.id).filter(Boolean);\n\n  for (const r of relevantResults) {\n    const src = r.metadata?.source_url || '';\n    const pn = r.metadata?.page_number || 0;\n    const key = `${src}|${pn}`;\n    if (src && !seen.has(key)) {\n      seen.add(key);\n      sourceUrls.push(src);\n      pageNumbers.push(pn);\n    }\n  }\n\n  return [{ json: {\n    originalResults: allResults,\n    relevantResults: relevantResults,\n    indices_utilizados: selectedIndices,\n    needsExpansion: sourceUrls.length > 0,\n    expansionParams: {\n      p_source_urls: sourceUrls,\n      p_page_numbers: pageNumbers,\n      p_exclude_ids: excludeIds,\n      p_window: 1\n    }\n  } }];\n} catch (e) {\n  return [{ json: {\n    originalResults: allResults,\n    relevantResults: [candidates[0]],\n    needsExpansion: !!candidates[0],\n    error: e.message,\n    expansionParams: {\n      p_source_urls: candidates[0]?.metadata?.source_url ? [candidates[0].metadata.source_url] : [],\n      p_page_numbers: candidates[0]?.metadata?.page_number ? [candidates[0].metadata.page_number] : [],\n      p_exclude_ids: allResults.map(r => r.id).filter(Boolean),\n      p_window: 1\n    }\n  } }];\n}"
-      },
-      "id": "899b7151-4133-4574-a2e2-8fdea139fd28",
-      "name": "Procesar_Seleccion",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        592,
-        2688
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "const { contexto, images, query, sourceUrl, chat_id } = $json;\nconst hasImage = !!$('input').item.json.image_base64;\nconst imageData = $('input').item.json.image_base64 || null;\nconst imageMimeType = $('input').item.json.image_mime_type || 'image/jpeg';\nconst userName = $('input').item.json.userName || 'Usuario';\nconst fecha = new Date().toLocaleDateString('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });\n\nconst imageListForPrompt = images && images.length > 0\n  ? '\\n\\nIMÁGENES TÉCNICAS DISPONIBLES EN EL MANUAL:\\n' + images.map(img => '  [' + img.index + '] ' + img.filename).join('\\n') + '\\nSi el usuario solicita visuales o si una imagen ayuda a explicar, inclúyela usando: [ENVIAR_IMAGENES: N].'\n  : '';\n\nconst systemInstruction = `FECHA ACTUAL: ${fecha}\\nEres SARA, la asistente técnica experta de Satcom. Tu objetivo es resolver dudas utilizando la documentación técnica proporcionada.\\n\\nINSTRUCCIONES DE CONOCIMIENTO:\\n1. La información bajo 'DOCUMENTACIÓN DE APOYO' es tu conocimiento interno. NO agradezcas al usuario por esta información.\\n2. Responde directamente y de forma profesional basándote en la documentación.\\n3. Si la respuesta no está en los fragmentos, indícalo claramente sin inventar.\\n4. Estas hablando con ${userName}.\\n\\nREGLAS DE FORMATO:\\n- Cita la fuente (Manual/Sección) solo cuando la respuesta provenga de la documentación.\\n- Usa listas con viñetas para pasos técnicos.\\n- Para imágenes del manual que aporten valor: [ENVIAR_IMAGENES: N].\\n- NO inventes información.`;\n\nconst userParts = [];\nif (hasImage) userParts.push({ inline_data: { mime_type: imageMimeType, data: imageData } });\n\nlet fullPrompt;\nif (contexto) {\n  fullPrompt = `DOCUMENTACIÓN DE APOYO (Tu base de conocimientos):\\n${contexto}\\n${imageListForPrompt}\\n\\n________________________________\\nCONSULTA DEL USUARIO:\\n${query}`;\n} else {\n  fullPrompt = query;\n}\n\nuserParts.push({ text: fullPrompt });\n\nreturn [{ json: {\n  gemini_body: {\n    system_instruction: { parts: [{ text: systemInstruction }] },\n    contents: [{ role: 'user', parts: userParts }],\n    generationConfig: { temperature: 0.1, maxOutputTokens: 2048 }\n  },\n  images: images || [],\n  sourceUrl: sourceUrl || '',\n  chat_id\n} }];"
-      },
-      "id": "3cb04d03-7a35-4a1f-80e0-8191d1ebe273",
-      "name": "Preparar_Body_LLM",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1264,
-        2816
-      ]
-    },
-    {
-      "parameters": {
-        "options": {
-          "maxOutputTokens": 2048,
-          "temperature": 0.2
-        }
-      },
-      "id": "8e449e7d-ab7e-4303-acf7-be195edb2a22",
-      "name": "Modelo_Respuesta1",
-      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
-      "typeVersion": 1,
-      "position": [
-        1552,
-        3040
-      ],
-      "credentials": {
-        "googlePalmApi": {
-          "id": "Ta2pXSGeHYq0FZJD",
-          "name": "Google Gemini(PaLM) Api account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "model": {
-          "__rl": true,
-          "value": "gpt-3.5-turbo",
-          "mode": "list",
-          "cachedResultName": "gpt-3.5-turbo"
-        },
-        "builtInTools": {},
-        "options": {}
-      },
-      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-      "typeVersion": 1.3,
-      "position": [
-        1376,
-        3056
-      ],
-      "id": "a3d1e39c-e5b1-4d28-a8cc-d8b193f864b2",
-      "name": "OpenAI Chat Model3",
-      "credentials": {
-        "openAiApi": {
-          "id": "ovGsSIf2aiqz6ETu",
-          "name": "OpenAi account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "promptType": "define",
-        "text": "={{ JSON.stringify({\n  contents: [{\n    parts: [{\n      text: `Eres un experto en filtrado de información técnica de Oracle Simphony.\\n\\nCONSULTA DEL USUARIO: ${$json.query}\\n\\nFRAGMENTOS DISPONIBLES:\\n${$json.candidates_text}\\n\\nTAREA:\\nSelecciona ÚNICAMENTE los números de los fragmentos que contienen la respuesta directa o información estructural indispensable para resolver la consulta del usuario.\\n\\nREGLAS CRÍTICAS DE FILTRADO:\\n1. RELEVANCIA TEMÁTICA: Si la consulta es sobre \"Menu Items\" (productos), DESCARTA fragmentos que pertenezcan a módulos distintos como \"Personnel\" (Personal), \"Labor Management\", \"Payments\" (Pagos), \"Taxes\" (Impuestos) o \"Gift Cards\".\\n2. JERARQUÍA DE PROCESOS: Distingue entre el proceso principal solicitado y procesos secundarios. Por ejemplo, si se pregunta \"cómo crear un producto\", los fragmentos sobre \"códigos de barras\" o \"impresión de tickets\" son secundarios y deben descartarse.\\n3. PRECISIÓN TÉCNICA: Prioriza fragmentos que describan componentes base como \"Definitions\", \"Classes\", \"Master Records\" y \"Prices\".\\n4. MINIMIZACIÓN: Si el fragmento es solo una portada o índice, DESCÁRTALO. Es mejor devolver pocos fragmentos relevantes que muchos vagos.\\n\\nSALIDA:\\nResponde exclusivamente con un JSON que tenga el formato: {\"indices\": [n, n...]} `\n    }]\n  }],\n  generationConfig: { temperature: 0.1, response_mime_type: 'application/json' }\n}) }}",
-        "needsFallback": true,
-        "options": {}
-      },
-      "type": "@n8n/n8n-nodes-langchain.agent",
-      "typeVersion": 3.1,
-      "position": [
-        272,
-        2688
-      ],
-      "id": "2bae7b3a-303f-4e67-890c-811b1b6e95e4",
-      "name": "AI Agent"
-    },
-    {
-      "parameters": {
-        "model": {
-          "__rl": true,
-          "value": "gpt-4-turbo",
-          "mode": "list",
-          "cachedResultName": "gpt-4-turbo"
-        },
-        "builtInTools": {},
-        "options": {}
-      },
-      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-      "typeVersion": 1.3,
-      "position": [
-        128,
-        2944
-      ],
-      "id": "1ee36682-c63c-40cc-869e-90c61360c8a9",
-      "name": "OpenAI Chat Model4",
-      "credentials": {
-        "openAiApi": {
-          "id": "ovGsSIf2aiqz6ETu",
-          "name": "OpenAi account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "options": {}
-      },
-      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
-      "typeVersion": 1,
-      "position": [
-        288,
-        2928
-      ],
-      "id": "1fa75c83-030b-4b94-9a05-3ebce22e147c",
-      "name": "Google Gemini Chat Model",
-      "credentials": {
-        "googlePalmApi": {
-          "id": "mMMNu6JhrqIAX7Q7",
-          "name": "Vertex"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2-preview:embedContent",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "googlePalmApi",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  model: 'models/gemini-embedding-2-preview',\n  content: {\n    parts: [\n      ...($('Extraer_Plan').item.json.hasImage ? [{ inline_data: { mime_type: $('Extraer_Plan').item.json.imageMimeType, data: $('Extraer_Plan').item.json.imageData } }] : []),\n      ...($('Extraer_Plan').item.json.querySearch ? [{ text: $('Extraer_Plan').item.json.querySearch }] : [])\n    ]\n  },\n  outputDimensionality: 3072\n}) }}",
-        "options": {
-          "timeout": 30000
-        }
-      },
-      "id": "057e5c9c-b45d-4184-a5ca-f541787873fa",
-      "name": "Multimodal_Embedding2",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [
-        -384,
-        2672
-      ],
-      "credentials": {
-        "googlePalmApi": {
-          "id": "mMMNu6JhrqIAX7Q7",
-          "name": "Vertex"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "const query = $('input').item.json.query || '[imagen adjunta sin texto]';\nconst hasImage = !!$('input').item.json.image_base64;\nconst fecha = new Date().toLocaleDateString('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });\nconst imgNota = hasImage ? '\\nNOTA: El usuario adjuntó una imagen; incluye búsqueda aunque sea charla casual.' : '';\nconst prompt = 'FECHA Y HORA ACTUAL: ' + fecha +\n  '\\n\\nNUEVA CONSULTA: ' + query + imgNota +\n  '\\n\\nClasifica esta consulta para búsqueda en la base de conocimientos.\\n' +\n  'REGLA CLAVE: Si la consulta tiene referencias temporales (\"hoy\", \"esta semana\", \"este mes\", \"quién está de soporte/guardia/turno\"), ' +\n  'DEBES incluir la fecha actual (' + fecha + ') en las queries.\\n\\n' +\n  'CLASIFICACIÓN DE QUERY:\\n' +\n  '- exact_id: códigos, IDs, tickets, errores específicos → semantic_weight=0.2, keyword_weight=0.8\\n' +\n  '- conceptual: cómo hacer algo, explicaciones → semantic_weight=0.7, keyword_weight=0.3\\n' +\n  '- mixed: conceptual + términos técnicos → semantic_weight=0.5, keyword_weight=0.5\\n\\n' +\n  'Expande términos con sinónimos técnicos relevantes.\\n\\n' +\n  'Responde SOLO con JSON válido sin markdown:\\n' +\n  '{\"queries\": [\"query expandida\"], \"query_type\": \"conceptual|exact_id|mixed\", \"semantic_weight\": 0.7, \"keyword_weight\": 0.3}';\nreturn [{ json: { prompt } }];"
-      },
-      "id": "d02e5439-57ee-46ac-b55a-56e79a365ee7",
-      "name": "Preparar_Planificador",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        -800,
-        2672
-      ]
-    },
-    {
-      "parameters": {
-        "modelName": "models/gemini-2.5-flash-lite",
-        "options": {
-          "temperature": 0
-        }
-      },
-      "id": "94fef962-ab12-434d-aff4-ffd59dc6415d",
-      "name": "Modelo_Planificador",
-      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
-      "typeVersion": 1,
-      "position": [
-        -560,
-        2928
-      ],
-      "credentials": {
-        "googlePalmApi": {
-          "id": "mMMNu6JhrqIAX7Q7",
-          "name": "Vertex"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "model": {
-          "__rl": true,
-          "value": "gpt-3.5-turbo",
-          "mode": "list",
-          "cachedResultName": "gpt-3.5-turbo"
-        },
-        "builtInTools": {},
-        "options": {}
-      },
-      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-      "typeVersion": 1.3,
-      "position": [
-        -736,
-        2928
-      ],
-      "id": "60293b37-9fdb-4602-acb7-7aa19f9e6341",
-      "name": "OpenAI Chat Model",
-      "credentials": {
-        "openAiApi": {
-          "id": "ovGsSIf2aiqz6ETu",
-          "name": "OpenAi account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "https://ufnpzxlvpwagavoytwco.supabase.co/rest/v1/rpc/match_documents",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "apikey",
-              "value": "={{ $('Get_Global_Variables').item.json.valor }}"
-            },
-            {
-              "name": "Authorization",
-              "value": "={{ $('Get_Global_Variables').item.json.valor }}"
-            },
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            },
-            {
-              "name": "Content-Profile",
-              "value": "rag"
-            },
-            {
-              "name": "Accept-Profile",
-              "value": "rag"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  query_embedding: '[' + $json.embedding.values.join(',') + ']',\n  match_threshold: 0.25,\n  match_count: 7,\n  p_negocio: 'tinkay',\n  p_visibilidad: 'publico'\n}) }}",
-        "options": {}
-      },
-      "id": "ed5f9a9b-fc11-4735-b990-8fdcbc887891",
-      "name": "Supabase_Search",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [
-        -160,
-        2688
-      ],
-      "alwaysOutputData": true
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "https://ufnpzxlvpwagavoytwco.supabase.co/rest/v1/rpc/rag.get_adjacent_chunks",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "apikey",
-              "value": "={{ $('Get_Global_Variables').item.json.valor }}"
-            },
-            {
-              "name": "Authorization",
-              "value": "={{ $('Get_Global_Variables').item.json.valor }}"
-            },
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json.expansionParams) }}",
-        "options": {}
-      },
-      "id": "873f3f7b-6f90-4b6b-baa2-0ab2f57c7d2d",
-      "name": "Supabase_Adjacent",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [
-        816,
-        2688
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "const selectionData = $('Procesar_Seleccion').item.json;\nconst initialResults = selectionData.originalResults || [];\nconst relevantResults = selectionData.relevantResults || [];\nconst input = $('Extraer_Plan').item.json;\nlet adjacentChunks = [];\ntry { adjacentChunks = $('Supabase_Adjacent').all().map(i => i.json).filter(r => r && r.id); } catch (_) { adjacentChunks = []; }\nif (initialResults.length === 0 && (adjacentChunks.length === 0 || !adjacentChunks[0]?.id)) {\n  return [{ json: { contexto: '', images: [], sourceUrl: '', sinResultados: true, chat_id: input.chat_id, query: input.query } }];\n}\nconst seenContent = new Set();\nconst dedup = (arr) => arr.filter(r => { const key = (r.content || '').trim(); if (!key || seenContent.has(key)) return false; seenContent.add(key); return true; });\nconst textResults = dedup(relevantResults).filter(r => r.type === 'text');\nconst imageResults = dedup(relevantResults).filter(r => r.type === 'image');\nconst allTextChunks = [...textResults, ...dedup(adjacentChunks).filter(r => r.type === 'text')];\nconst grouped = {}, groupMeta = {};\nfor (const chunk of allTextChunks) {\n  const src = chunk.metadata?.source_url || 'unknown';\n  if (!grouped[src]) { grouped[src] = []; groupMeta[src] = { manual_name: chunk.metadata?.manual_name || '', article_title: chunk.metadata?.article_title || '', contextual_header: chunk.metadata?.contextual_header || '' }; }\n  grouped[src].push({ content: chunk.content, _pn: chunk.metadata?.page_number || 0, _ci: chunk.metadata?.chunk_index || 0 });\n}\nconst contextParts = [];\nfor (const [src, chunks] of Object.entries(grouped)) {\n  chunks.sort((a, b) => a._pn - b._pn || a._ci - b._ci);\n  const meta = groupMeta[src];\n  const headerParts = [meta.manual_name, meta.article_title, meta.contextual_header].filter(Boolean);\n  const headerLine = headerParts.length > 0 ? '[' + headerParts.join(' › ') + ']\\n' : '';\n  contextParts.push(headerLine + chunks.map(c => c.content).join('\\n'));\n}\nconst contexto = contextParts.join('\\n\\n---\\n\\n');\nconst images = imageResults.map((r, i) => ({ index: i+1, filename: r.metadata?.image_filename || ('imagen_'+(i+1)+'.jpg'), base64: r.metadata?.original_content || null, sourceUrl: r.metadata?.source_url || '' })).slice(0, 4);\nconst mainSourceUrl = relevantResults[0]?.metadata?.source_url || initialResults[0]?.metadata?.source_url || '';\nreturn [{ json: { contexto, images, sourceUrl: mainSourceUrl, sinResultados: false, chat_id: input.chat_id, query: input.query } }];"
-      },
-      "id": "db40adc1-5775-4981-bb40-c20263937492",
-      "name": "Procesar_RRF",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1040,
-        2816
-      ]
-    },
-    {
-      "parameters": {
-        "promptType": "define",
-        "text": "={{ $json.gemini_body.contents[0].parts }}",
-        "needsFallback": true,
-        "options": {
-          "systemMessage": "={{ $json.gemini_body.system_instruction.parts[0].text }}"
-        }
-      },
-      "id": "8597498b-d050-459e-b3e5-005d072bab44",
-      "name": "Agente_Respuesta",
-      "type": "@n8n/n8n-nodes-langchain.agent",
-      "typeVersion": 3.1,
-      "position": [
-        1488,
-        2816
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "const preparador = $('Preparar_Body_LLM').item.json;\nconst imagesFromRAG = preparador.images || [];\nconst sourceUrl = preparador.source_url || preparador.sourceUrl || '';\nconst chat_id = preparador.chat_id || $('input').item.json.chat_id;\nlet finalResponse = $json.output || '';\nif (!finalResponse) {\n  return [{ json: { chat_id, final_response: 'SARA generó una respuesta vacía. Por favor reformula tu pregunta.', source_url: sourceUrl, send_image: false } }];\n}\nconst regex = /\\[ENVIAR_IMAGENES:\\s*([\\d,\\s]+)\\]/i;\nconst match = finalResponse.match(regex);\nlet imageToSend = null;\nif (match && imagesFromRAG.length > 0) {\n  const indices = match[1].split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));\n  for (const idx of indices) {\n    const img = imagesFromRAG[idx - 1];\n    if (img && img.base64) { imageToSend = img.base64; break; }\n  }\n  finalResponse = finalResponse.replace(regex, '').trim();\n}\nconst output = { json: { chat_id, final_response: finalResponse, source_url: sourceUrl, send_image: !!imageToSend } };\nif (imageToSend) { output.binary = { data: { data: imageToSend, mimeType: 'image/jpeg', fileName: 'imagen_manual.jpg' } }; }\nreturn [output];"
-      },
-      "id": "23dac504-ede3-405c-8513-635e4aaa5169",
-      "name": "Procesar_Output",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1824,
-        2736
-      ]
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "boolean": [
-            {
-              "value1": "={{ $json.send_image }}",
-              "value2": true
-            }
-          ]
-        }
-      },
-      "id": "b9903dcf-590b-4f90-9564-c1e3928c9e88",
-      "name": "Tiene_Imagen",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 1,
-      "position": [
-        2016,
-        2720
-      ]
-    },
-    {
-      "parameters": {
-        "operation": "sendPhoto",
-        "chatId": "={{ $json.chat_id }}",
-        "binaryData": true,
-        "additionalFields": {}
-      },
-      "id": "96ca766e-2e38-4981-8483-e11059a4490a",
-      "name": "Telegram_Foto",
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1.1,
-      "position": [
-        2176,
-        2528
-      ],
-      "webhookId": "62fdf5eb-0eed-4346-9af1-08e0fd046e67",
-      "credentials": {
-        "telegramApi": {
-          "id": "NI5ekmJ0uQSRq842",
-          "name": "Telegram account"
-        }
-      },
-      "continueOnFail": true
-    },
-    {
-      "parameters": {
-        "jsCode": "const data = $('Procesar_Output').first().json;\nconst response = data.final_response || 'No encontré información relevante en los manuales.';\nconst sourceUrl = data.source_url || '';\nconst withLink = sourceUrl ? `${response}\\\\n\\\\n🔗 [Ver en el Manual Original](${sourceUrl})` : response;\nreturn [{ json: { response: withLink } }];"
-      },
-      "id": "b398457a-dec8-409e-b6b9-f05d12b245c7",
-      "name": "Devolver_Cerebro",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        2400,
-        2720
-      ]
-    },
-    {
-      "parameters": {
-        "operation": "getRows",
-        "databaseId": "tTce4CBCWb8fcYmZ",
-        "filterType": "manual",
-        "filters": {
-          "conditions": [
-            {
-              "key": "nombre",
-              "operator": "equal",
-              "value": "SUPABASE_API_KEY"
-            }
-          ]
-        }
-      },
-      "id": "get-global-vars-id",
-      "name": "Get_Global_Variables",
-      "type": "n8n-nodes-base.n8nDataTables",
-      "typeVersion": 1,
-      "position": [
-        -1000,
-        2672
-      ]
-    }
-  ],
-  "connections": {
-    "input": {
-      "main": [
-        [
-          {
-            "node": "Get_Global_Variables",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Get_Variables": {
-      "main": [
-        [
-          {
-            "node": "Preparar_Planificador",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Filtrar_Candidatos": {
-      "main": [
-        [
-          {
-            "node": "AI Agent",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Procesar_Seleccion": {
-      "main": [
-        [
-          {
-            "node": "Procesar_RRF",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Preparar_Body_LLM": {
-      "main": [
-        [
-          {
-            "node": "Agente_Respuesta",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Modelo_Respuesta1": {
-      "ai_languageModel": [
-        [
-          {
-            "node": "Agente_Respuesta",
-            "type": "ai_languageModel",
-            "index": 1
-          }
-        ]
-      ]
-    },
-    "OpenAI Chat Model3": {
-      "ai_languageModel": [
-        [
-          {
-            "node": "Agente_Respuesta",
-            "type": "ai_languageModel",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "AI Agent": {
-      "main": [
-        [
-          {
-            "node": "Procesar_Seleccion",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "OpenAI Chat Model4": {
-      "ai_languageModel": [
-        [
-          {
-            "node": "AI Agent",
-            "type": "ai_languageModel",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Google Gemini Chat Model": {
-      "ai_languageModel": [
-        [
-          {
-            "node": "AI Agent",
-            "type": "ai_languageModel",
-            "index": 1
-          }
-        ]
-      ]
-    },
-    "Multimodal_Embedding2": {
-      "main": [
-        [
-          {
-            "node": "Supabase_Search",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Preparar_Planificador": {
-      "main": [
-        [
-          {
-            "node": "Agente_Planificador",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Extraer_Plan": {
-      "main": [
-        [
-          {
-            "node": "Multimodal_Embedding2",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Agente_Planificador": {
-      "main": [
-        [
-          {
-            "node": "Extraer_Plan",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Modelo_Planificador": {
-      "ai_languageModel": [
-        [
-          {
-            "node": "Agente_Planificador",
-            "type": "ai_languageModel",
-            "index": 1
-          }
-        ]
-      ]
-    },
-    "OpenAI Chat Model": {
-      "ai_languageModel": [
-        [
-          {
-            "node": "Agente_Planificador",
-            "type": "ai_languageModel",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Supabase_Search": {
-      "main": [
-        [
-          {
-            "node": "Filtrar_Candidatos",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Supabase_Adjacent": {
-      "main": [
-        [
-          {
-            "node": "Procesar_RRF",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Procesar_RRF": {
-      "main": [
-        [
-          {
-            "node": "Preparar_Body_LLM",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Agente_Respuesta": {
-      "main": [
-        [
-          {
-            "node": "Procesar_Output",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Procesar_Output": {
-      "main": [
-        [
-          {
-            "node": "Tiene_Imagen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Tiene_Imagen": {
-      "main": [
-        [
-          {
-            "node": "Telegram_Foto",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Devolver_Cerebro",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Telegram_Foto": {
-      "main": [
-        [
-          {
-            "node": "Devolver_Cerebro",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Get_Global_Variables": {
-      "main": [
-        [
-          {
-            "node": "Preparar_Planificador",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    }
-  },
-  "settings": {
-    "executionOrder": "v1",
-    "binaryMode": "separate",
-    "callerPolicy": "workflowsFromSameOwner",
-    "availableInMCP": false
-  },
-  "staticData": null,
-  "meta": null,
-  "pinData": {
-    "input": [
-      {
-        "json": {
-          "query": "pasos para crear un producto en Simphony",
-          "chat_id": 1941490810
-        }
-      }
-    ]
-  },
-  "versionId": "fa252c83-2af1-413f-a184-0609936f4336",
-  "activeVersionId": "fa252c83-2af1-413f-a184-0609936f4336",
-  "versionCounter": 18,
-  "triggerCount": 0,
-  "shared": [
-    {
-      "updatedAt": "2026-04-19T13:30:45.724Z",
-      "createdAt": "2026-04-19T13:30:45.724Z",
-      "role": "workflow:owner",
-      "workflowId": "3e30HCu1WMRq14oF",
-      "projectId": "Gl0z3DNsbKkj4wmb",
-      "project": {
-        "updatedAt": "2025-07-14T00:32:57.724Z",
-        "createdAt": "2025-07-14T00:30:54.688Z",
-        "id": "Gl0z3DNsbKkj4wmb",
-        "name": "Jesus Navarrete <jesus.navarrete@satcomla.com>",
-        "type": "personal",
-        "icon": null,
-        "description": null,
-        "creatorId": "57c765b1-1447-43a1-a14d-bbeacac5d303"
-      }
-    }
-  ],
-  "tags": [],
-  "activeVersion": {
-    "updatedAt": "2026-04-22T13:36:37.774Z",
-    "createdAt": "2026-04-22T13:36:37.774Z",
-    "versionId": "fa252c83-2af1-413f-a184-0609936f4336",
-    "workflowId": "3e30HCu1WMRq14oF",
-    "nodes": [
-      {
-        "parameters": {
-          "workflowInputs": {
-            "values": [
-              {
-                "name": "query"
-              },
-              {
-                "name": "chat_id"
-              }
-            ]
-          }
-        },
-        "id": "b093b0ed-308b-4aea-b39c-772af845294e",
-        "name": "input",
-        "type": "n8n-nodes-base.executeWorkflowTrigger",
-        "typeVersion": 1.1,
-        "position": [
-          -1280,
-          2672
-        ]
-      },
-      {
-        "parameters": {
-          "jsCode": "const results = $input.all().map(i => i.json).filter(r => r && r.id);\nconst meaningful = results.filter(r => (r.content || '').trim().length >= 40);\n\n// Enviamos el top 8 para reranking\nconst candidates = meaningful\n  .sort((a, b) => (b.combined_score || 0) - (a.combined_score || 0))\n  .slice(0, 8);\n\nconst formatted = candidates.map((c, i) => `[FRAGMENTO #${i}]\\n${c.content}`).join('\\n\\n');\n\nreturn [{ json: { \n  query: $('Extraer_Plan').item.json.querySearch || $('input').item.json.query,\n  candidates_text: formatted,\n  candidates_raw: candidates,\n  all_results: results\n} }];"
-        },
-        "id": "41a6ea80-e399-47d8-991a-af56995de105",
-        "name": "Filtrar_Candidatos",
-        "type": "n8n-nodes-base.code",
-        "typeVersion": 2,
-        "position": [
-          0,
-          2688
-        ]
-      },
-      {
-        "parameters": {
-          "jsCode": "const inputData = $('Filtrar_Candidatos').item.json;\nconst candidates = inputData.candidates_raw;\nconst allResults = inputData.all_results;\n\ntry {\n  // CORRECCIÓN: Leer de $json.output que es donde el AI Agent entrega el texto\n  const cleanText = $json.output || '';\n  const data = JSON.parse(cleanText);\n  const selectedIndices = data.indices || [];\n  \n  const relevantResults = selectedIndices.map(i => candidates[i]).filter(Boolean);\n  if (relevantResults.length === 0 && candidates.length > 0) {\n    relevantResults.push(candidates[0]);\n  }\n\n  const seen = new Set();\n  const sourceUrls = [], pageNumbers = [], excludeIds = allResults.map(r => r.id).filter(Boolean);\n\n  for (const r of relevantResults) {\n    const src = r.metadata?.source_url || '';\n    const pn = r.metadata?.page_number || 0;\n    const key = `${src}|${pn}`;\n    if (src && !seen.has(key)) {\n      seen.add(key);\n      sourceUrls.push(src);\n      pageNumbers.push(pn);\n    }\n  }\n\n  return [{ json: {\n    originalResults: allResults,\n    relevantResults: relevantResults,\n    indices_utilizados: selectedIndices,\n    needsExpansion: sourceUrls.length > 0,\n    expansionParams: {\n      p_source_urls: sourceUrls,\n      p_page_numbers: pageNumbers,\n      p_exclude_ids: excludeIds,\n      p_window: 1\n    }\n  } }];\n} catch (e) {\n  return [{ json: {\n    originalResults: allResults,\n    relevantResults: [candidates[0]],\n    needsExpansion: !!candidates[0],\n    error: e.message,\n    expansionParams: {\n      p_source_urls: candidates[0]?.metadata?.source_url ? [candidates[0].metadata.source_url] : [],\n      p_page_numbers: candidates[0]?.metadata?.page_number ? [candidates[0].metadata.page_number] : [],\n      p_exclude_ids: allResults.map(r => r.id).filter(Boolean),\n      p_window: 1\n    }\n  } }];\n}"
-        },
-        "id": "899b7151-4133-4574-a2e2-8fdea139fd28",
-        "name": "Procesar_Seleccion",
-        "type": "n8n-nodes-base.code",
-        "typeVersion": 2,
-        "position": [
-          592,
-          2688
-        ]
-      },
-      {
-        "parameters": {
-          "jsCode": "const { contexto, images, query, sourceUrl, chat_id } = $json;\nconst hasImage = !!$('input').item.json.image_base64;\nconst imageData = $('input').item.json.image_base64 || null;\nconst imageMimeType = $('input').item.json.image_mime_type || 'image/jpeg';\nconst userName = $('input').item.json.userName || 'Usuario';\nconst fecha = new Date().toLocaleDateString('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });\n\nconst imageListForPrompt = images && images.length > 0\n  ? '\\n\\nIMÁGENES TÉCNICAS DISPONIBLES EN EL MANUAL:\\n' + images.map(img => '  [' + img.index + '] ' + img.filename).join('\\n') + '\\nSi el usuario solicita visuales o si una imagen ayuda a explicar, inclúyela usando: [ENVIAR_IMAGENES: N].'\n  : '';\n\nconst systemInstruction = `FECHA ACTUAL: ${fecha}\\nEres SARA, la asistente técnica experta de Satcom. Tu objetivo es resolver dudas utilizando la documentación técnica proporcionada.\\n\\nINSTRUCCIONES DE CONOCIMIENTO:\\n1. La información bajo 'DOCUMENTACIÓN DE APOYO' es tu conocimiento interno. NO agradezcas al usuario por esta información.\\n2. Responde directamente y de forma profesional basándote en la documentación.\\n3. Si la respuesta no está en los fragmentos, indícalo claramente sin inventar.\\n4. Estas hablando con ${userName}.\\n\\nREGLAS DE FORMATO:\\n- Cita la fuente (Manual/Sección) solo cuando la respuesta provenga de la documentación.\\n- Usa listas con viñetas para pasos técnicos.\\n- Para imágenes del manual que aporten valor: [ENVIAR_IMAGENES: N].\\n- NO inventes información.`;\n\nconst userParts = [];\nif (hasImage) userParts.push({ inline_data: { mime_type: imageMimeType, data: imageData } });\n\nlet fullPrompt;\nif (contexto) {\n  fullPrompt = `DOCUMENTACIÓN DE APOYO (Tu base de conocimientos):\\n${contexto}\\n${imageListForPrompt}\\n\\n________________________________\\nCONSULTA DEL USUARIO:\\n${query}`;\n} else {\n  fullPrompt = query;\n}\n\nuserParts.push({ text: fullPrompt });\n\nreturn [{ json: {\n  gemini_body: {\n    system_instruction: { parts: [{ text: systemInstruction }] },\n    contents: [{ role: 'user', parts: userParts }],\n    generationConfig: { temperature: 0.1, maxOutputTokens: 2048 }\n  },\n  images: images || [],\n  sourceUrl: sourceUrl || '',\n  chat_id\n} }];"
-        },
-        "id": "3cb04d03-7a35-4a1f-80e0-8191d1ebe273",
-        "name": "Preparar_Body_LLM",
-        "type": "n8n-nodes-base.code",
-        "typeVersion": 2,
-        "position": [
-          1264,
-          2816
-        ]
-      },
-      {
-        "parameters": {
-          "options": {
-            "maxOutputTokens": 2048,
-            "temperature": 0.2
-          }
-        },
-        "id": "8e449e7d-ab7e-4303-acf7-be195edb2a22",
-        "name": "Modelo_Respuesta1",
-        "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
-        "typeVersion": 1,
-        "position": [
-          1552,
-          3040
-        ],
-        "credentials": {
-          "googlePalmApi": {
-            "id": "Ta2pXSGeHYq0FZJD",
-            "name": "Google Gemini(PaLM) Api account"
-          }
-        }
-      },
-      {
-        "parameters": {
-          "model": {
-            "__rl": true,
-            "value": "gpt-3.5-turbo",
-            "mode": "list",
-            "cachedResultName": "gpt-3.5-turbo"
-          },
-          "builtInTools": {},
-          "options": {}
-        },
-        "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-        "typeVersion": 1.3,
-        "position": [
-          1376,
-          3056
-        ],
-        "id": "a3d1e39c-e5b1-4d28-a8cc-d8b193f864b2",
-        "name": "OpenAI Chat Model3",
-        "credentials": {
-          "openAiApi": {
-            "id": "ovGsSIf2aiqz6ETu",
-            "name": "OpenAi account"
-          }
-        }
-      },
-      {
-        "parameters": {
-          "promptType": "define",
-          "text": "={{ JSON.stringify({\n  contents: [{\n    parts: [{\n      text: `Eres un experto en filtrado de información técnica de Oracle Simphony.\\n\\nCONSULTA DEL USUARIO: ${$json.query}\\n\\nFRAGMENTOS DISPONIBLES:\\n${$json.candidates_text}\\n\\nTAREA:\\nSelecciona ÚNICAMENTE los números de los fragmentos que contienen la respuesta directa o información estructural indispensable para resolver la consulta del usuario.\\n\\nREGLAS CRÍTICAS DE FILTRADO:\\n1. RELEVANCIA TEMÁTICA: Si la consulta es sobre \"Menu Items\" (productos), DESCARTA fragmentos que pertenezcan a módulos distintos como \"Personnel\" (Personal), \"Labor Management\", \"Payments\" (Pagos), \"Taxes\" (Impuestos) o \"Gift Cards\".\\n2. JERARQUÍA DE PROCESOS: Distingue entre el proceso principal solicitado y procesos secundarios. Por ejemplo, si se pregunta \"cómo crear un producto\", los fragmentos sobre \"códigos de barras\" o \"impresión de tickets\" son secundarios y deben descartarse.\\n3. PRECISIÓN TÉCNICA: Prioriza fragmentos que describan componentes base como \"Definitions\", \"Classes\", \"Master Records\" y \"Prices\".\\n4. MINIMIZACIÓN: Si el fragmento es solo una portada o índice, DESCÁRTALO. Es mejor devolver pocos fragmentos relevantes que muchos vagos.\\n\\nSALIDA:\\nResponde exclusivamente con un JSON que tenga el formato: {\"indices\": [n, n...]} `\n    }]\n  }],\n  generationConfig: { temperature: 0.1, response_mime_type: 'application/json' }\n}) }}",
-          "needsFallback": true,
-          "options": {}
-        },
-        "type": "@n8n/n8n-nodes-langchain.agent",
-        "typeVersion": 3.1,
-        "position": [
-          272,
-          2688
-        ],
-        "id": "2bae7b3a-303f-4e67-890c-811b1b6e95e4",
-        "name": "AI Agent"
-      },
-      {
-        "parameters": {
-          "model": {
-            "__rl": true,
-            "value": "gpt-4-turbo",
-            "mode": "list",
-            "cachedResultName": "gpt-4-turbo"
-          },
-          "builtInTools": {},
-          "options": {}
-        },
-        "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-        "typeVersion": 1.3,
-        "position": [
-          128,
-          2944
-        ],
-        "id": "1ee36682-c63c-40cc-869e-90c61360c8a9",
-        "name": "OpenAI Chat Model4",
-        "credentials": {
-          "openAiApi": {
-            "id": "ovGsSIf2aiqz6ETu",
-            "name": "OpenAi account"
-          }
-        }
-      },
-      {
-        "parameters": {
-          "options": {}
-        },
-        "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
-        "typeVersion": 1,
-        "position": [
-          288,
-          2928
-        ],
-        "id": "1fa75c83-030b-4b94-9a05-3ebce22e147c",
-        "name": "Google Gemini Chat Model",
-        "credentials": {
-          "googlePalmApi": {
-            "id": "mMMNu6JhrqIAX7Q7",
-            "name": "Vertex"
-          }
-        }
-      },
-      {
-        "parameters": {
-          "method": "POST",
-          "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2-preview:embedContent",
-          "authentication": "predefinedCredentialType",
-          "nodeCredentialType": "googlePalmApi",
-          "sendHeaders": true,
-          "headerParameters": {
-            "parameters": [
-              {
-                "name": "Content-Type",
-                "value": "application/json"
-              }
-            ]
-          },
-          "sendBody": true,
-          "specifyBody": "json",
-          "jsonBody": "={{ JSON.stringify({\n  model: 'models/gemini-embedding-2-preview',\n  content: {\n    parts: [\n      ...($('Extraer_Plan').item.json.hasImage ? [{ inline_data: { mime_type: $('Extraer_Plan').item.json.imageMimeType, data: $('Extraer_Plan').item.json.imageData } }] : []),\n      ...($('Extraer_Plan').item.json.querySearch ? [{ text: $('Extraer_Plan').item.json.querySearch }] : [])\n    ]\n  },\n  outputDimensionality: 3072\n}) }}",
-          "options": {
-            "timeout": 30000
-          }
-        },
-        "id": "057e5c9c-b45d-4184-a5ca-f541787873fa",
-        "name": "Multimodal_Embedding2",
-        "type": "n8n-nodes-base.httpRequest",
-        "typeVersion": 4.1,
-        "position": [
-          -384,
-          2672
-        ],
-        "credentials": {
-          "googlePalmApi": {
-            "id": "mMMNu6JhrqIAX7Q7",
-            "name": "Vertex"
-          }
-        }
-      },
-      {
-        "parameters": {
-          "jsCode": "const query = $('input').item.json.query || '[imagen adjunta sin texto]';\nconst hasImage = !!$('input').item.json.image_base64;\nconst fecha = new Date().toLocaleDateString('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });\nconst imgNota = hasImage ? '\\nNOTA: El usuario adjuntó una imagen; incluye búsqueda aunque sea charla casual.' : '';\nconst prompt = 'FECHA Y HORA ACTUAL: ' + fecha +\n  '\\n\\nNUEVA CONSULTA: ' + query + imgNota +\n  '\\n\\nClasifica esta consulta para búsqueda en la base de conocimientos.\\n' +\n  'REGLA CLAVE: Si la consulta tiene referencias temporales (\"hoy\", \"esta semana\", \"este mes\", \"quién está de soporte/guardia/turno\"), ' +\n  'DEBES incluir la fecha actual (' + fecha + ') en las queries.\\n\\n' +\n  'CLASIFICACIÓN DE QUERY:\\n' +\n  '- exact_id: códigos, IDs, tickets, errores específicos → semantic_weight=0.2, keyword_weight=0.8\\n' +\n  '- conceptual: cómo hacer algo, explicaciones → semantic_weight=0.7, keyword_weight=0.3\\n' +\n  '- mixed: conceptual + términos técnicos → semantic_weight=0.5, keyword_weight=0.5\\n\\n' +\n  'Expande términos con sinónimos técnicos relevantes.\\n\\n' +\n  'Responde SOLO con JSON válido sin markdown:\\n' +\n  '{\"queries\": [\"query expandida\"], \"query_type\": \"conceptual|exact_id|mixed\", \"semantic_weight\": 0.7, \"keyword_weight\": 0.3}';\nreturn [{ json: { prompt } }];"
-        },
-        "id": "d02e5439-57ee-46ac-b55a-56e79a365ee7",
-        "name": "Preparar_Planificador",
-        "type": "n8n-nodes-base.code",
-        "typeVersion": 2,
-        "position": [
-          -800,
-          2672
-        ]
-      },
-      {
-        "parameters": {
-          "modelName": "models/gemini-2.5-flash-lite",
-          "options": {
-            "temperature": 0
-          }
-        },
-        "id": "94fef962-ab12-434d-aff4-ffd59dc6415d",
-        "name": "Modelo_Planificador",
-        "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
-        "typeVersion": 1,
-        "position": [
-          -560,
-          2928
-        ],
-        "credentials": {
-          "googlePalmApi": {
-            "id": "mMMNu6JhrqIAX7Q7",
-            "name": "Vertex"
-          }
-        }
-      },
-      {
-        "parameters": {
-          "model": {
-            "__rl": true,
-            "value": "gpt-3.5-turbo",
-            "mode": "list",
-            "cachedResultName": "gpt-3.5-turbo"
-          },
-          "builtInTools": {},
-          "options": {}
-        },
-        "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-        "typeVersion": 1.3,
-        "position": [
-          -736,
-          2928
-        ],
-        "id": "60293b37-9fdb-4602-acb7-7aa19f9e6341",
-        "name": "OpenAI Chat Model",
-        "credentials": {
-          "openAiApi": {
-            "id": "ovGsSIf2aiqz6ETu",
-            "name": "OpenAi account"
-          }
-        }
-      },
-      {
-        "parameters": {
-          "method": "POST",
-          "url": "https://ufnpzxlvpwagavoytwco.supabase.co/rest/v1/rpc/match_documents",
-          "sendHeaders": true,
-          "headerParameters": {
-            "parameters": [
-              {
-                "name": "apikey",
-                "value": "={{ $('Get_Global_Variables').item.json.valor }}"
-              },
-              {
-                "name": "Authorization",
-                "value": "={{ $('Get_Global_Variables').item.json.valor }}"
-              },
-              {
-                "name": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "name": "Content-Profile",
-                "value": "rag"
-              },
-              {
-                "name": "Accept-Profile",
-                "value": "rag"
-              }
-            ]
-          },
-          "sendBody": true,
-          "specifyBody": "json",
-          "jsonBody": "={{ JSON.stringify({\n  query_embedding: '[' + $json.embedding.values.join(',') + ']',\n  match_threshold: 0.25,\n  match_count: 7,\n  p_negocio: 'tinkay',\n  p_visibilidad: 'publico'\n}) }}",
-          "options": {}
-        },
-        "id": "ed5f9a9b-fc11-4735-b990-8fdcbc887891",
-        "name": "Supabase_Search",
-        "type": "n8n-nodes-base.httpRequest",
-        "typeVersion": 4.1,
-        "position": [
-          -160,
-          2688
-        ],
-        "alwaysOutputData": true
-      },
-      {
-        "parameters": {
-          "method": "POST",
-          "url": "https://ufnpzxlvpwagavoytwco.supabase.co/rest/v1/rpc/rag.get_adjacent_chunks",
-          "sendHeaders": true,
-          "headerParameters": {
-            "parameters": [
-              {
-                "name": "apikey",
-                "value": "={{ $('Get_Global_Variables').item.json.valor }}"
-              },
-              {
-                "name": "Authorization",
-                "value": "={{ $('Get_Global_Variables').item.json.valor }}"
-              },
-              {
-                "name": "Content-Type",
-                "value": "application/json"
-              }
-            ]
-          },
-          "sendBody": true,
-          "specifyBody": "json",
-          "jsonBody": "={{ JSON.stringify($json.expansionParams) }}",
-          "options": {}
-        },
-        "id": "873f3f7b-6f90-4b6b-baa2-0ab2f57c7d2d",
-        "name": "Supabase_Adjacent",
-        "type": "n8n-nodes-base.httpRequest",
-        "typeVersion": 4.1,
-        "position": [
-          816,
-          2688
-        ]
-      },
-      {
-        "parameters": {
-          "jsCode": "const selectionData = $('Procesar_Seleccion').item.json;\nconst initialResults = selectionData.originalResults || [];\nconst relevantResults = selectionData.relevantResults || [];\nconst input = $('Extraer_Plan').item.json;\nlet adjacentChunks = [];\ntry { adjacentChunks = $('Supabase_Adjacent').all().map(i => i.json).filter(r => r && r.id); } catch (_) { adjacentChunks = []; }\nif (initialResults.length === 0 && (adjacentChunks.length === 0 || !adjacentChunks[0]?.id)) {\n  return [{ json: { contexto: '', images: [], sourceUrl: '', sinResultados: true, chat_id: input.chat_id, query: input.query } }];\n}\nconst seenContent = new Set();\nconst dedup = (arr) => arr.filter(r => { const key = (r.content || '').trim(); if (!key || seenContent.has(key)) return false; seenContent.add(key); return true; });\nconst textResults = dedup(relevantResults).filter(r => r.type === 'text');\nconst imageResults = dedup(relevantResults).filter(r => r.type === 'image');\nconst allTextChunks = [...textResults, ...dedup(adjacentChunks).filter(r => r.type === 'text')];\nconst grouped = {}, groupMeta = {};\nfor (const chunk of allTextChunks) {\n  const src = chunk.metadata?.source_url || 'unknown';\n  if (!grouped[src]) { grouped[src] = []; groupMeta[src] = { manual_name: chunk.metadata?.manual_name || '', article_title: chunk.metadata?.article_title || '', contextual_header: chunk.metadata?.contextual_header || '' }; }\n  grouped[src].push({ content: chunk.content, _pn: chunk.metadata?.page_number || 0, _ci: chunk.metadata?.chunk_index || 0 });\n}\nconst contextParts = [];\nfor (const [src, chunks] of Object.entries(grouped)) {\n  chunks.sort((a, b) => a._pn - b._pn || a._ci - b._ci);\n  const meta = groupMeta[src];\n  const headerParts = [meta.manual_name, meta.article_title, meta.contextual_header].filter(Boolean);\n  const headerLine = headerParts.length > 0 ? '[' + headerParts.join(' › ') + ']\\n' : '';\n  contextParts.push(headerLine + chunks.map(c => c.content).join('\\n'));\n}\nconst contexto = contextParts.join('\\n\\n---\\n\\n');\nconst images = imageResults.map((r, i) => ({ index: i+1, filename: r.metadata?.image_filename || ('imagen_'+(i+1)+'.jpg'), base64: r.metadata?.original_content || null, sourceUrl: r.metadata?.source_url || '' })).slice(0, 4);\nconst mainSourceUrl = relevantResults[0]?.metadata?.source_url || initialResults[0]?.metadata?.source_url || '';\nreturn [{ json: { contexto, images, sourceUrl: mainSourceUrl, sinResultados: false, chat_id: input.chat_id, query: input.query } }];"
-        },
-        "id": "db40adc1-5775-4981-bb40-c20263937492",
-        "name": "Procesar_RRF",
-        "type": "n8n-nodes-base.code",
-        "typeVersion": 2,
-        "position": [
-          1040,
-          2816
-        ]
-      },
-      {
-        "parameters": {
-          "promptType": "define",
-          "text": "={{ $json.gemini_body.contents[0].parts }}",
-          "needsFallback": true,
-          "options": {
-            "systemMessage": "={{ $json.gemini_body.system_instruction.parts[0].text }}"
-          }
-        },
-        "id": "8597498b-d050-459e-b3e5-005d072bab44",
-        "name": "Agente_Respuesta",
-        "type": "@n8n/n8n-nodes-langchain.agent",
-        "typeVersion": 3.1,
-        "position": [
-          1488,
-          2816
-        ]
-      },
-      {
-        "parameters": {
-          "jsCode": "const preparador = $('Preparar_Body_LLM').item.json;\nconst imagesFromRAG = preparador.images || [];\nconst sourceUrl = preparador.source_url || preparador.sourceUrl || '';\nconst chat_id = preparador.chat_id || $('input').item.json.chat_id;\nlet finalResponse = $json.output || '';\nif (!finalResponse) {\n  return [{ json: { chat_id, final_response: 'SARA generó una respuesta vacía. Por favor reformula tu pregunta.', source_url: sourceUrl, send_image: false } }];\n}\nconst regex = /\\[ENVIAR_IMAGENES:\\s*([\\d,\\s]+)\\]/i;\nconst match = finalResponse.match(regex);\nlet imageToSend = null;\nif (match && imagesFromRAG.length > 0) {\n  const indices = match[1].split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));\n  for (const idx of indices) {\n    const img = imagesFromRAG[idx - 1];\n    if (img && img.base64) { imageToSend = img.base64; break; }\n  }\n  finalResponse = finalResponse.replace(regex, '').trim();\n}\nconst output = { json: { chat_id, final_response: finalResponse, source_url: sourceUrl, send_image: !!imageToSend } };\nif (imageToSend) { output.binary = { data: { data: imageToSend, mimeType: 'image/jpeg', fileName: 'imagen_manual.jpg' } }; }\nreturn [output];"
-        },
-        "id": "23dac504-ede3-405c-8513-635e4aaa5169",
-        "name": "Procesar_Output",
-        "type": "n8n-nodes-base.code",
-        "typeVersion": 2,
-        "position": [
-          1824,
-          2736
-        ]
-      },
-      {
-        "parameters": {
-          "conditions": {
-            "boolean": [
-              {
-                "value1": "={{ $json.send_image }}",
-                "value2": true
-              }
-            ]
-          }
-        },
-        "id": "b9903dcf-590b-4f90-9564-c1e3928c9e88",
-        "name": "Tiene_Imagen",
-        "type": "n8n-nodes-base.if",
-        "typeVersion": 1,
-        "position": [
-          2016,
-          2720
-        ]
-      },
-      {
-        "parameters": {
-          "operation": "sendPhoto",
-          "chatId": "={{ $json.chat_id }}",
-          "binaryData": true,
-          "additionalFields": {}
-        },
-        "id": "96ca766e-2e38-4981-8483-e11059a4490a",
-        "name": "Telegram_Foto",
-        "type": "n8n-nodes-base.telegram",
-        "typeVersion": 1.1,
-        "position": [
-          2176,
-          2528
-        ],
-        "webhookId": "62fdf5eb-0eed-4346-9af1-08e0fd046e67",
-        "credentials": {
-          "telegramApi": {
-            "id": "NI5ekmJ0uQSRq842",
-            "name": "Telegram account"
-          }
-        },
-        "continueOnFail": true
-      },
-      {
-        "parameters": {
-          "jsCode": "const data = $('Procesar_Output').first().json;\nconst response = data.final_response || 'No encontré información relevante en los manuales.';\nconst sourceUrl = data.source_url || '';\nconst withLink = sourceUrl ? `${response}\\\\n\\\\n🔗 [Ver en el Manual Original](${sourceUrl})` : response;\nreturn [{ json: { response: withLink } }];"
-        },
-        "id": "b398457a-dec8-409e-b6b9-f05d12b245c7",
-        "name": "Devolver_Cerebro",
-        "type": "n8n-nodes-base.code",
-        "typeVersion": 2,
-        "position": [
-          2400,
-          2720
-        ]
-      }
-    ],
-    "connections": {
-      "input": {
-        "main": [
-          [
-            {
-              "node": "Preparar_Planificador",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Get_Variables": {
-        "main": [
-          [
-            {
-              "node": "Preparar_Planificador",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Filtrar_Candidatos": {
-        "main": [
-          [
-            {
-              "node": "AI Agent",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Procesar_Seleccion": {
-        "main": [
-          [
-            {
-              "node": "Procesar_RRF",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Preparar_Body_LLM": {
-        "main": [
-          [
-            {
-              "node": "Agente_Respuesta",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Modelo_Respuesta1": {
-        "ai_languageModel": [
-          [
-            {
-              "node": "Agente_Respuesta",
-              "type": "ai_languageModel",
-              "index": 1
-            }
-          ]
-        ]
-      },
-      "OpenAI Chat Model3": {
-        "ai_languageModel": [
-          [
-            {
-              "node": "Agente_Respuesta",
-              "type": "ai_languageModel",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "AI Agent": {
-        "main": [
-          [
-            {
-              "node": "Procesar_Seleccion",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "OpenAI Chat Model4": {
-        "ai_languageModel": [
-          [
-            {
-              "node": "AI Agent",
-              "type": "ai_languageModel",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Google Gemini Chat Model": {
-        "ai_languageModel": [
-          [
-            {
-              "node": "AI Agent",
-              "type": "ai_languageModel",
-              "index": 1
-            }
-          ]
-        ]
-      },
-      "Multimodal_Embedding2": {
-        "main": [
-          [
-            {
-              "node": "Supabase_Search",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Preparar_Planificador": {
-        "main": [
-          [
-            {
-              "node": "Agente_Planificador",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Extraer_Plan": {
-        "main": [
-          [
-            {
-              "node": "Multimodal_Embedding2",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Agente_Planificador": {
-        "main": [
-          [
-            {
-              "node": "Extraer_Plan",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Modelo_Planificador": {
-        "ai_languageModel": [
-          [
-            {
-              "node": "Agente_Planificador",
-              "type": "ai_languageModel",
-              "index": 1
-            }
-          ]
-        ]
-      },
-      "OpenAI Chat Model": {
-        "ai_languageModel": [
-          [
-            {
-              "node": "Agente_Planificador",
-              "type": "ai_languageModel",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Supabase_Search": {
-        "main": [
-          [
-            {
-              "node": "Filtrar_Candidatos",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Supabase_Adjacent": {
-        "main": [
-          [
-            {
-              "node": "Procesar_RRF",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Procesar_RRF": {
-        "main": [
-          [
-            {
-              "node": "Preparar_Body_LLM",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Agente_Respuesta": {
-        "main": [
-          [
-            {
-              "node": "Procesar_Output",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Procesar_Output": {
-        "main": [
-          [
-            {
-              "node": "Tiene_Imagen",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Tiene_Imagen": {
-        "main": [
-          [
-            {
-              "node": "Telegram_Foto",
-              "type": "main",
-              "index": 0
-            }
-          ],
-          [
-            {
-              "node": "Devolver_Cerebro",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "Telegram_Foto": {
-        "main": [
-          [
-            {
-              "node": "Devolver_Cerebro",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      }
-    },
-    "authors": "Jesus Navarrete",
-    "name": null,
-    "description": null,
-    "autosaved": false,
-    "workflowPublishHistory": [
-      {
-        "createdAt": "2026-04-22T13:36:37.815Z",
-        "id": 1018,
-        "workflowId": "3e30HCu1WMRq14oF",
-        "versionId": "fa252c83-2af1-413f-a184-0609936f4336",
-        "event": "activated",
-        "userId": "57c765b1-1447-43a1-a14d-bbeacac5d303"
-      },
-      {
-        "createdAt": "2026-04-22T13:36:37.803Z",
-        "id": 1017,
-        "workflowId": "3e30HCu1WMRq14oF",
-        "versionId": "fa252c83-2af1-413f-a184-0609936f4336",
-        "event": "deactivated",
-        "userId": "57c765b1-1447-43a1-a14d-bbeacac5d303"
-      }
-    ]
-  }
+﻿{
+    "updatedAt":  "2026-04-22T13:36:37.772Z",
+    "createdAt":  "2026-04-19T13:30:45.720Z",
+    "id":  "3e30HCu1WMRq14oF",
+    "name":  "TinkayRAG_Consulta_V1",
+    "description":  null,
+    "active":  true,
+    "isArchived":  false,
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "query"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "id":  "b093b0ed-308b-4aea-b39c-772af845294e",
+                      "name":  "input",
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       -1280,
+                                       2672
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const results = $input.all().map(i =\u003e i.json).filter(r =\u003e r \u0026\u0026 r.id);\nconst meaningful = results.filter(r =\u003e (r.content || \u0027\u0027).trim().length \u003e= 40);\n\n// Enviamos el top 8 para reranking\nconst candidates = meaningful\n  .sort((a, b) =\u003e (b.combined_score || 0) - (a.combined_score || 0))\n  .slice(0, 8);\n\nconst formatted = candidates.map((c, i) =\u003e `[FRAGMENTO #${i}]\\n${c.content}`).join(\u0027\\n\\n\u0027);\n\nreturn [{ json: { \n  query: $(\u0027Extraer_Plan\u0027).item.json.querySearch || $(\u0027input\u0027).item.json.query,\n  candidates_text: formatted,\n  candidates_raw: candidates,\n  all_results: results\n} }];"
+                                     },
+                      "id":  "41a6ea80-e399-47d8-991a-af56995de105",
+                      "name":  "Filtrar_Candidatos",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       0,
+                                       2688
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const inputData = $(\u0027Filtrar_Candidatos\u0027).item.json;\nconst candidates = inputData.candidates_raw;\nconst allResults = inputData.all_results;\n\ntry {\n  // CORRECCIÓN: Leer de $json.output que es donde el AI Agent entrega el texto\n  const cleanText = $json.output || \u0027\u0027;\n  const data = JSON.parse(cleanText);\n  const selectedIndices = data.indices || [];\n  \n  const relevantResults = selectedIndices.map(i =\u003e candidates[i]).filter(Boolean);\n  if (relevantResults.length === 0 \u0026\u0026 candidates.length \u003e 0) {\n    relevantResults.push(candidates[0]);\n  }\n\n  const seen = new Set();\n  const sourceUrls = [], pageNumbers = [], excludeIds = allResults.map(r =\u003e r.id).filter(Boolean);\n\n  for (const r of relevantResults) {\n    const src = r.metadata?.source_url || \u0027\u0027;\n    const pn = r.metadata?.page_number || 0;\n    const key = `${src}|${pn}`;\n    if (src \u0026\u0026 !seen.has(key)) {\n      seen.add(key);\n      sourceUrls.push(src);\n      pageNumbers.push(pn);\n    }\n  }\n\n  return [{ json: {\n    originalResults: allResults,\n    relevantResults: relevantResults,\n    indices_utilizados: selectedIndices,\n    needsExpansion: sourceUrls.length \u003e 0,\n    expansionParams: {\n      p_source_urls: sourceUrls,\n      p_page_numbers: pageNumbers,\n      p_exclude_ids: excludeIds,\n      p_window: 1\n    }\n  } }];\n} catch (e) {\n  return [{ json: {\n    originalResults: allResults,\n    relevantResults: [candidates[0]],\n    needsExpansion: !!candidates[0],\n    error: e.message,\n    expansionParams: {\n      p_source_urls: candidates[0]?.metadata?.source_url ? [candidates[0].metadata.source_url] : [],\n      p_page_numbers: candidates[0]?.metadata?.page_number ? [candidates[0].metadata.page_number] : [],\n      p_exclude_ids: allResults.map(r =\u003e r.id).filter(Boolean),\n      p_window: 1\n    }\n  } }];\n}"
+                                     },
+                      "id":  "899b7151-4133-4574-a2e2-8fdea139fd28",
+                      "name":  "Procesar_Seleccion",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       592,
+                                       2688
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const { contexto, images, query, sourceUrl, chat_id } = $json;\nconst hasImage = !!$(\u0027input\u0027).item.json.image_base64;\nconst imageData = $(\u0027input\u0027).item.json.image_base64 || null;\nconst imageMimeType = $(\u0027input\u0027).item.json.image_mime_type || \u0027image/jpeg\u0027;\nconst userName = $(\u0027input\u0027).item.json.userName || \u0027Usuario\u0027;\nconst fecha = new Date().toLocaleDateString(\u0027es-MX\u0027, { weekday: \u0027long\u0027, year: \u0027numeric\u0027, month: \u0027long\u0027, day: \u0027numeric\u0027 });\n\nconst imageListForPrompt = images \u0026\u0026 images.length \u003e 0\n  ? \u0027\\n\\nIMÁGENES TÉCNICAS DISPONIBLES EN EL MANUAL:\\n\u0027 + images.map(img =\u003e \u0027  [\u0027 + img.index + \u0027] \u0027 + img.filename).join(\u0027\\n\u0027) + \u0027\\nSi el usuario solicita visuales o si una imagen ayuda a explicar, inclúyela usando: [ENVIAR_IMAGENES: N].\u0027\n  : \u0027\u0027;\n\nconst systemInstruction = `FECHA ACTUAL: ${fecha}\\nEres SARA, la asistente técnica experta de Satcom. Tu objetivo es resolver dudas utilizando la documentación técnica proporcionada.\\n\\nINSTRUCCIONES DE CONOCIMIENTO:\\n1. La información bajo \u0027DOCUMENTACIÓN DE APOYO\u0027 es tu conocimiento interno. NO agradezcas al usuario por esta información.\\n2. Responde directamente y de forma profesional basándote en la documentación.\\n3. Si la respuesta no está en los fragmentos, indícalo claramente sin inventar.\\n4. Estas hablando con ${userName}.\\n\\nREGLAS DE FORMATO:\\n- Cita la fuente (Manual/Sección) solo cuando la respuesta provenga de la documentación.\\n- Usa listas con viñetas para pasos técnicos.\\n- Para imágenes del manual que aporten valor: [ENVIAR_IMAGENES: N].\\n- NO inventes información.`;\n\nconst userParts = [];\nif (hasImage) userParts.push({ inline_data: { mime_type: imageMimeType, data: imageData } });\n\nlet fullPrompt;\nif (contexto) {\n  fullPrompt = `DOCUMENTACIÓN DE APOYO (Tu base de conocimientos):\\n${contexto}\\n${imageListForPrompt}\\n\\n________________________________\\nCONSULTA DEL USUARIO:\\n${query}`;\n} else {\n  fullPrompt = query;\n}\n\nuserParts.push({ text: fullPrompt });\n\nreturn [{ json: {\n  gemini_body: {\n    system_instruction: { parts: [{ text: systemInstruction }] },\n    contents: [{ role: \u0027user\u0027, parts: userParts }],\n    generationConfig: { temperature: 0.1, maxOutputTokens: 2048 }\n  },\n  images: images || [],\n  sourceUrl: sourceUrl || \u0027\u0027,\n  chat_id\n} }];"
+                                     },
+                      "id":  "3cb04d03-7a35-4a1f-80e0-8191d1ebe273",
+                      "name":  "Preparar_Body_LLM",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       1264,
+                                       2816
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "options":  {
+                                                         "maxOutputTokens":  2048,
+                                                         "temperature":  0.2
+                                                     }
+                                     },
+                      "id":  "8e449e7d-ab7e-4303-acf7-be195edb2a22",
+                      "name":  "Modelo_Respuesta1",
+                      "type":  "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1552,
+                                       3040
+                                   ],
+                      "credentials":  {
+                                          "googlePalmApi":  {
+                                                                "id":  "Ta2pXSGeHYq0FZJD",
+                                                                "name":  "Google Gemini(PaLM) Api account"
+                                                            }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "model":  {
+                                                       "__rl":  true,
+                                                       "value":  "gpt-3.5-turbo",
+                                                       "mode":  "list",
+                                                       "cachedResultName":  "gpt-3.5-turbo"
+                                                   },
+                                         "builtInTools":  {
+
+                                                          },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+                      "typeVersion":  1.3,
+                      "position":  [
+                                       1376,
+                                       3056
+                                   ],
+                      "id":  "a3d1e39c-e5b1-4d28-a8cc-d8b193f864b2",
+                      "name":  "OpenAI Chat Model3",
+                      "credentials":  {
+                                          "openAiApi":  {
+                                                            "id":  "ovGsSIf2aiqz6ETu",
+                                                            "name":  "OpenAi account"
+                                                        }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "promptType":  "define",
+                                         "text":  "={{ JSON.stringify({\n  contents: [{\n    parts: [{\n      text: `Eres un experto en filtrado de información técnica de Oracle Simphony.\\n\\nCONSULTA DEL USUARIO: ${$json.query}\\n\\nFRAGMENTOS DISPONIBLES:\\n${$json.candidates_text}\\n\\nTAREA:\\nSelecciona ÚNICAMENTE los números de los fragmentos que contienen la respuesta directa o información estructural indispensable para resolver la consulta del usuario.\\n\\nREGLAS CRÍTICAS DE FILTRADO:\\n1. RELEVANCIA TEMÁTICA: Si la consulta es sobre \"Menu Items\" (productos), DESCARTA fragmentos que pertenezcan a módulos distintos como \"Personnel\" (Personal), \"Labor Management\", \"Payments\" (Pagos), \"Taxes\" (Impuestos) o \"Gift Cards\".\\n2. JERARQUÍA DE PROCESOS: Distingue entre el proceso principal solicitado y procesos secundarios. Por ejemplo, si se pregunta \"cómo crear un producto\", los fragmentos sobre \"códigos de barras\" o \"impresión de tickets\" son secundarios y deben descartarse.\\n3. PRECISIÓN TÉCNICA: Prioriza fragmentos que describan componentes base como \"Definitions\", \"Classes\", \"Master Records\" y \"Prices\".\\n4. MINIMIZACIÓN: Si el fragmento es solo una portada o índice, DESCÁRTALO. Es mejor devolver pocos fragmentos relevantes que muchos vagos.\\n\\nSALIDA:\\nResponde exclusivamente con un JSON que tenga el formato: {\"indices\": [n, n...]} `\n    }]\n  }],\n  generationConfig: { temperature: 0.1, response_mime_type: \u0027application/json\u0027 }\n}) }}",
+                                         "needsFallback":  true,
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.agent",
+                      "typeVersion":  3.1,
+                      "position":  [
+                                       272,
+                                       2688
+                                   ],
+                      "id":  "2bae7b3a-303f-4e67-890c-811b1b6e95e4",
+                      "name":  "AI Agent"
+                  },
+                  {
+                      "parameters":  {
+                                         "model":  {
+                                                       "__rl":  true,
+                                                       "value":  "gpt-4-turbo",
+                                                       "mode":  "list",
+                                                       "cachedResultName":  "gpt-4-turbo"
+                                                   },
+                                         "builtInTools":  {
+
+                                                          },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+                      "typeVersion":  1.3,
+                      "position":  [
+                                       128,
+                                       2944
+                                   ],
+                      "id":  "1ee36682-c63c-40cc-869e-90c61360c8a9",
+                      "name":  "OpenAI Chat Model4",
+                      "credentials":  {
+                                          "openAiApi":  {
+                                                            "id":  "ovGsSIf2aiqz6ETu",
+                                                            "name":  "OpenAi account"
+                                                        }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+                      "typeVersion":  1,
+                      "position":  [
+                                       288,
+                                       2928
+                                   ],
+                      "id":  "1fa75c83-030b-4b94-9a05-3ebce22e147c",
+                      "name":  "Google Gemini Chat Model",
+                      "credentials":  {
+                                          "googlePalmApi":  {
+                                                                "id":  "mMMNu6JhrqIAX7Q7",
+                                                                "name":  "Vertex"
+                                                            }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "method":  "POST",
+                                         "url":  "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2-preview:embedContent",
+                                         "authentication":  "predefinedCredentialType",
+                                         "nodeCredentialType":  "googlePalmApi",
+                                         "sendHeaders":  true,
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "name":  "Content-Type",
+                                                                                         "value":  "application/json"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "specifyBody":  "json",
+                                         "jsonBody":  "={{ JSON.stringify({\n  model: \u0027models/gemini-embedding-2-preview\u0027,\n  content: {\n    parts: [\n      ...($(\u0027Extraer_Plan\u0027).item.json.hasImage ? [{ inline_data: { mime_type: $(\u0027Extraer_Plan\u0027).item.json.imageMimeType, data: $(\u0027Extraer_Plan\u0027).item.json.imageData } }] : []),\n      ...($(\u0027Extraer_Plan\u0027).item.json.querySearch ? [{ text: $(\u0027Extraer_Plan\u0027).item.json.querySearch }] : [])\n    ]\n  },\n  outputDimensionality: 3072\n}) }}",
+                                         "options":  {
+                                                         "timeout":  30000
+                                                     }
+                                     },
+                      "id":  "057e5c9c-b45d-4184-a5ca-f541787873fa",
+                      "name":  "Multimodal_Embedding2",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.1,
+                      "position":  [
+                                       -384,
+                                       2672
+                                   ],
+                      "credentials":  {
+                                          "googlePalmApi":  {
+                                                                "id":  "mMMNu6JhrqIAX7Q7",
+                                                                "name":  "Vertex"
+                                                            }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const query = $(\u0027input\u0027).item.json.query || \u0027[imagen adjunta sin texto]\u0027;\nconst hasImage = !!$(\u0027input\u0027).item.json.image_base64;\nconst fecha = new Date().toLocaleDateString(\u0027es-MX\u0027, { weekday: \u0027long\u0027, year: \u0027numeric\u0027, month: \u0027long\u0027, day: \u0027numeric\u0027 });\nconst imgNota = hasImage ? \u0027\\nNOTA: El usuario adjuntó una imagen; incluye búsqueda aunque sea charla casual.\u0027 : \u0027\u0027;\nconst prompt = \u0027FECHA Y HORA ACTUAL: \u0027 + fecha +\n  \u0027\\n\\nNUEVA CONSULTA: \u0027 + query + imgNota +\n  \u0027\\n\\nClasifica esta consulta para búsqueda en la base de conocimientos.\\n\u0027 +\n  \u0027REGLA CLAVE: Si la consulta tiene referencias temporales (\"hoy\", \"esta semana\", \"este mes\", \"quién está de soporte/guardia/turno\"), \u0027 +\n  \u0027DEBES incluir la fecha actual (\u0027 + fecha + \u0027) en las queries.\\n\\n\u0027 +\n  \u0027CLASIFICACIÓN DE QUERY:\\n\u0027 +\n  \u0027- exact_id: códigos, IDs, tickets, errores específicos → semantic_weight=0.2, keyword_weight=0.8\\n\u0027 +\n  \u0027- conceptual: cómo hacer algo, explicaciones → semantic_weight=0.7, keyword_weight=0.3\\n\u0027 +\n  \u0027- mixed: conceptual + términos técnicos → semantic_weight=0.5, keyword_weight=0.5\\n\\n\u0027 +\n  \u0027Expande términos con sinónimos técnicos relevantes.\\n\\n\u0027 +\n  \u0027Responde SOLO con JSON válido sin markdown:\\n\u0027 +\n  \u0027{\"queries\": [\"query expandida\"], \"query_type\": \"conceptual|exact_id|mixed\", \"semantic_weight\": 0.7, \"keyword_weight\": 0.3}\u0027;\nreturn [{ json: { prompt } }];"
+                                     },
+                      "id":  "d02e5439-57ee-46ac-b55a-56e79a365ee7",
+                      "name":  "Preparar_Planificador",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       -800,
+                                       2672
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "modelName":  "models/gemini-2.5-flash-lite",
+                                         "options":  {
+                                                         "temperature":  0
+                                                     }
+                                     },
+                      "id":  "94fef962-ab12-434d-aff4-ffd59dc6415d",
+                      "name":  "Modelo_Planificador",
+                      "type":  "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -560,
+                                       2928
+                                   ],
+                      "credentials":  {
+                                          "googlePalmApi":  {
+                                                                "id":  "mMMNu6JhrqIAX7Q7",
+                                                                "name":  "Vertex"
+                                                            }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "model":  {
+                                                       "__rl":  true,
+                                                       "value":  "gpt-3.5-turbo",
+                                                       "mode":  "list",
+                                                       "cachedResultName":  "gpt-3.5-turbo"
+                                                   },
+                                         "builtInTools":  {
+
+                                                          },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+                      "typeVersion":  1.3,
+                      "position":  [
+                                       -736,
+                                       2928
+                                   ],
+                      "id":  "60293b37-9fdb-4602-acb7-7aa19f9e6341",
+                      "name":  "OpenAI Chat Model",
+                      "credentials":  {
+                                          "openAiApi":  {
+                                                            "id":  "ovGsSIf2aiqz6ETu",
+                                                            "name":  "OpenAi account"
+                                                        }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "method":  "POST",
+                                         "url":  "https://ufnpzxlvpwagavoytwco.supabase.co/rest/v1/rpc/match_documents",
+                                         "sendHeaders":  true,
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "name":  "apikey",
+                                                                                         "value":  "{{REDACTED_SECRET}}"
+                                                                                     },
+                                                                                     {
+                                                                                         "name":  "Authorization",
+                                                                                         "value":  "{{REDACTED_SECRET}}"
+                                                                                     },
+                                                                                     {
+                                                                                         "name":  "Content-Type",
+                                                                                         "value":  "application/json"
+                                                                                     },
+                                                                                     {
+                                                                                         "name":  "Content-Profile",
+                                                                                         "value":  "rag"
+                                                                                     },
+                                                                                     {
+                                                                                         "name":  "Accept-Profile",
+                                                                                         "value":  "rag"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "specifyBody":  "json",
+                                         "jsonBody":  "={{ JSON.stringify({\n  query_embedding: \u0027[\u0027 + $json.embedding.values.join(\u0027,\u0027) + \u0027]\u0027,\n  match_threshold: 0.25,\n  match_count: 7,\n  p_negocio: \u0027tinkay\u0027,\n  p_visibilidad: \u0027publico\u0027\n}) }}",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "ed5f9a9b-fc11-4735-b990-8fdcbc887891",
+                      "name":  "Supabase_Search",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.1,
+                      "position":  [
+                                       -160,
+                                       2688
+                                   ],
+                      "alwaysOutputData":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "method":  "POST",
+                                         "url":  "https://ufnpzxlvpwagavoytwco.supabase.co/rest/v1/rpc/rag.get_adjacent_chunks",
+                                         "sendHeaders":  true,
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "name":  "apikey",
+                                                                                         "value":  "{{REDACTED_SECRET}}"
+                                                                                     },
+                                                                                     {
+                                                                                         "name":  "Authorization",
+                                                                                         "value":  "{{REDACTED_SECRET}}"
+                                                                                     },
+                                                                                     {
+                                                                                         "name":  "Content-Type",
+                                                                                         "value":  "application/json"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "specifyBody":  "json",
+                                         "jsonBody":  "={{ JSON.stringify($json.expansionParams) }}",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "873f3f7b-6f90-4b6b-baa2-0ab2f57c7d2d",
+                      "name":  "Supabase_Adjacent",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.1,
+                      "position":  [
+                                       816,
+                                       2688
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const selectionData = $(\u0027Procesar_Seleccion\u0027).item.json;\nconst initialResults = selectionData.originalResults || [];\nconst relevantResults = selectionData.relevantResults || [];\nconst input = $(\u0027Extraer_Plan\u0027).item.json;\nlet adjacentChunks = [];\ntry { adjacentChunks = $(\u0027Supabase_Adjacent\u0027).all().map(i =\u003e i.json).filter(r =\u003e r \u0026\u0026 r.id); } catch (_) { adjacentChunks = []; }\nif (initialResults.length === 0 \u0026\u0026 (adjacentChunks.length === 0 || !adjacentChunks[0]?.id)) {\n  return [{ json: { contexto: \u0027\u0027, images: [], sourceUrl: \u0027\u0027, sinResultados: true, chat_id: input.chat_id, query: input.query } }];\n}\nconst seenContent = new Set();\nconst dedup = (arr) =\u003e arr.filter(r =\u003e { const key = (r.content || \u0027\u0027).trim(); if (!key || seenContent.has(key)) return false; seenContent.add(key); return true; });\nconst textResults = dedup(relevantResults).filter(r =\u003e r.type === \u0027text\u0027);\nconst imageResults = dedup(relevantResults).filter(r =\u003e r.type === \u0027image\u0027);\nconst allTextChunks = [...textResults, ...dedup(adjacentChunks).filter(r =\u003e r.type === \u0027text\u0027)];\nconst grouped = {}, groupMeta = {};\nfor (const chunk of allTextChunks) {\n  const src = chunk.metadata?.source_url || \u0027unknown\u0027;\n  if (!grouped[src]) { grouped[src] = []; groupMeta[src] = { manual_name: chunk.metadata?.manual_name || \u0027\u0027, article_title: chunk.metadata?.article_title || \u0027\u0027, contextual_header: chunk.metadata?.contextual_header || \u0027\u0027 }; }\n  grouped[src].push({ content: chunk.content, _pn: chunk.metadata?.page_number || 0, _ci: chunk.metadata?.chunk_index || 0 });\n}\nconst contextParts = [];\nfor (const [src, chunks] of Object.entries(grouped)) {\n  chunks.sort((a, b) =\u003e a._pn - b._pn || a._ci - b._ci);\n  const meta = groupMeta[src];\n  const headerParts = [meta.manual_name, meta.article_title, meta.contextual_header].filter(Boolean);\n  const headerLine = headerParts.length \u003e 0 ? \u0027[\u0027 + headerParts.join(\u0027 › \u0027) + \u0027]\\n\u0027 : \u0027\u0027;\n  contextParts.push(headerLine + chunks.map(c =\u003e c.content).join(\u0027\\n\u0027));\n}\nconst contexto = contextParts.join(\u0027\\n\\n---\\n\\n\u0027);\nconst images = imageResults.map((r, i) =\u003e ({ index: i+1, filename: r.metadata?.image_filename || (\u0027imagen_\u0027+(i+1)+\u0027.jpg\u0027), base64: r.metadata?.original_content || null, sourceUrl: r.metadata?.source_url || \u0027\u0027 })).slice(0, 4);\nconst mainSourceUrl = relevantResults[0]?.metadata?.source_url || initialResults[0]?.metadata?.source_url || \u0027\u0027;\nreturn [{ json: { contexto, images, sourceUrl: mainSourceUrl, sinResultados: false, chat_id: input.chat_id, query: input.query } }];"
+                                     },
+                      "id":  "db40adc1-5775-4981-bb40-c20263937492",
+                      "name":  "Procesar_RRF",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       1040,
+                                       2816
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "promptType":  "define",
+                                         "text":  "={{ $json.gemini_body.contents[0].parts }}",
+                                         "needsFallback":  true,
+                                         "options":  {
+                                                         "systemMessage":  "={{ $json.gemini_body.system_instruction.parts[0].text }}"
+                                                     }
+                                     },
+                      "id":  "8597498b-d050-459e-b3e5-005d072bab44",
+                      "name":  "Agente_Respuesta",
+                      "type":  "@n8n/n8n-nodes-langchain.agent",
+                      "typeVersion":  3.1,
+                      "position":  [
+                                       1488,
+                                       2816
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const preparador = $(\u0027Preparar_Body_LLM\u0027).item.json;\nconst imagesFromRAG = preparador.images || [];\nconst sourceUrl = preparador.source_url || preparador.sourceUrl || \u0027\u0027;\nconst chat_id = preparador.chat_id || $(\u0027input\u0027).item.json.chat_id;\nlet finalResponse = $json.output || \u0027\u0027;\nif (!finalResponse) {\n  return [{ json: { chat_id, final_response: \u0027SARA generó una respuesta vacía. Por favor reformula tu pregunta.\u0027, source_url: sourceUrl, send_image: false } }];\n}\nconst regex = /\\[ENVIAR_IMAGENES:\\s*([\\d,\\s]+)\\]/i;\nconst match = finalResponse.match(regex);\nlet imageToSend = null;\nif (match \u0026\u0026 imagesFromRAG.length \u003e 0) {\n  const indices = match[1].split(\u0027,\u0027).map(s =\u003e parseInt(s.trim())).filter(n =\u003e !isNaN(n));\n  for (const idx of indices) {\n    const img = imagesFromRAG[idx - 1];\n    if (img \u0026\u0026 img.base64) { imageToSend = img.base64; break; }\n  }\n  finalResponse = finalResponse.replace(regex, \u0027\u0027).trim();\n}\nconst output = { json: { chat_id, final_response: finalResponse, source_url: sourceUrl, send_image: !!imageToSend } };\nif (imageToSend) { output.binary = { data: { data: imageToSend, mimeType: \u0027image/jpeg\u0027, fileName: \u0027imagen_manual.jpg\u0027 } }; }\nreturn [output];"
+                                     },
+                      "id":  "23dac504-ede3-405c-8513-635e4aaa5169",
+                      "name":  "Procesar_Output",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       1824,
+                                       2736
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "boolean":  [
+                                                                            {
+                                                                                "value1":  "={{ $json.send_image }}",
+                                                                                "value2":  true
+                                                                            }
+                                                                        ]
+                                                        }
+                                     },
+                      "id":  "b9903dcf-590b-4f90-9564-c1e3928c9e88",
+                      "name":  "Tiene_Imagen",
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  1,
+                      "position":  [
+                                       2016,
+                                       2720
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "sendPhoto",
+                                         "chatId":  "={{ $json.chat_id }}",
+                                         "binaryData":  true,
+                                         "additionalFields":  {
+
+                                                              }
+                                     },
+                      "id":  "96ca766e-2e38-4981-8483-e11059a4490a",
+                      "name":  "Telegram_Foto",
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       2176,
+                                       2528
+                                   ],
+                      "webhookId":  "62fdf5eb-0eed-4346-9af1-08e0fd046e67",
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "NI5ekmJ0uQSRq842",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "continueOnFail":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const data = $(\u0027Procesar_Output\u0027).first().json;\nconst response = data.final_response || \u0027No encontré información relevante en los manuales.\u0027;\nconst sourceUrl = data.source_url || \u0027\u0027;\nconst withLink = sourceUrl ? `${response}\\\\n\\\\n🔗 [Ver en el Manual Original](${sourceUrl})` : response;\nreturn [{ json: { response: withLink } }];"
+                                     },
+                      "id":  "b398457a-dec8-409e-b6b9-f05d12b245c7",
+                      "name":  "Devolver_Cerebro",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       2400,
+                                       2720
+                                   ]
+                  }
+              ],
+    "connections":  {
+                        "input":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "node":  "Preparar_Planificador",
+                                                           "type":  "main",
+                                                           "index":  0
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Get_Variables":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "node":  "Preparar_Planificador",
+                                                                   "type":  "main",
+                                                                   "index":  0
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Filtrar_Candidatos":  {
+                                                   "main":  [
+                                                                [
+                                                                    {
+                                                                        "node":  "AI Agent",
+                                                                        "type":  "main",
+                                                                        "index":  0
+                                                                    }
+                                                                ]
+                                                            ]
+                                               },
+                        "Procesar_Seleccion":  {
+                                                   "main":  [
+                                                                [
+                                                                    {
+                                                                        "node":  "Procesar_RRF",
+                                                                        "type":  "main",
+                                                                        "index":  0
+                                                                    }
+                                                                ]
+                                                            ]
+                                               },
+                        "Preparar_Body_LLM":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "node":  "Agente_Respuesta",
+                                                                       "type":  "main",
+                                                                       "index":  0
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Modelo_Respuesta1":  {
+                                                  "ai_languageModel":  [
+                                                                           [
+                                                                               {
+                                                                                   "node":  "Agente_Respuesta",
+                                                                                   "type":  "ai_languageModel",
+                                                                                   "index":  1
+                                                                               }
+                                                                           ]
+                                                                       ]
+                                              },
+                        "OpenAI Chat Model3":  {
+                                                   "ai_languageModel":  [
+                                                                            [
+                                                                                {
+                                                                                    "node":  "Agente_Respuesta",
+                                                                                    "type":  "ai_languageModel",
+                                                                                    "index":  0
+                                                                                }
+                                                                            ]
+                                                                        ]
+                                               },
+                        "AI Agent":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "node":  "Procesar_Seleccion",
+                                                              "type":  "main",
+                                                              "index":  0
+                                                          }
+                                                      ]
+                                                  ]
+                                     },
+                        "OpenAI Chat Model4":  {
+                                                   "ai_languageModel":  [
+                                                                            [
+                                                                                {
+                                                                                    "node":  "AI Agent",
+                                                                                    "type":  "ai_languageModel",
+                                                                                    "index":  0
+                                                                                }
+                                                                            ]
+                                                                        ]
+                                               },
+                        "Google Gemini Chat Model":  {
+                                                         "ai_languageModel":  [
+                                                                                  [
+                                                                                      {
+                                                                                          "node":  "AI Agent",
+                                                                                          "type":  "ai_languageModel",
+                                                                                          "index":  1
+                                                                                      }
+                                                                                  ]
+                                                                              ]
+                                                     },
+                        "Multimodal_Embedding2":  {
+                                                      "main":  [
+                                                                   [
+                                                                       {
+                                                                           "node":  "Supabase_Search",
+                                                                           "type":  "main",
+                                                                           "index":  0
+                                                                       }
+                                                                   ]
+                                                               ]
+                                                  },
+                        "Preparar_Planificador":  {
+                                                      "main":  [
+                                                                   [
+                                                                       {
+                                                                           "node":  "Agente_Planificador",
+                                                                           "type":  "main",
+                                                                           "index":  0
+                                                                       }
+                                                                   ]
+                                                               ]
+                                                  },
+                        "Extraer_Plan":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "node":  "Multimodal_Embedding2",
+                                                                  "type":  "main",
+                                                                  "index":  0
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Agente_Planificador":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "node":  "Extraer_Plan",
+                                                                         "type":  "main",
+                                                                         "index":  0
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "Modelo_Planificador":  {
+                                                    "ai_languageModel":  [
+                                                                             [
+                                                                                 {
+                                                                                     "node":  "Agente_Planificador",
+                                                                                     "type":  "ai_languageModel",
+                                                                                     "index":  1
+                                                                                 }
+                                                                             ]
+                                                                         ]
+                                                },
+                        "OpenAI Chat Model":  {
+                                                  "ai_languageModel":  [
+                                                                           [
+                                                                               {
+                                                                                   "node":  "Agente_Planificador",
+                                                                                   "type":  "ai_languageModel",
+                                                                                   "index":  0
+                                                                               }
+                                                                           ]
+                                                                       ]
+                                              },
+                        "Supabase_Search":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "node":  "Filtrar_Candidatos",
+                                                                     "type":  "main",
+                                                                     "index":  0
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Supabase_Adjacent":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "node":  "Procesar_RRF",
+                                                                       "type":  "main",
+                                                                       "index":  0
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Procesar_RRF":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "node":  "Preparar_Body_LLM",
+                                                                  "type":  "main",
+                                                                  "index":  0
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Agente_Respuesta":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "node":  "Procesar_Output",
+                                                                      "type":  "main",
+                                                                      "index":  0
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Procesar_Output":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "node":  "Tiene_Imagen",
+                                                                     "type":  "main",
+                                                                     "index":  0
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Tiene_Imagen":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "node":  "Telegram_Foto",
+                                                                  "type":  "main",
+                                                                  "index":  0
+                                                              }
+                                                          ],
+                                                          [
+                                                              {
+                                                                  "node":  "Devolver_Cerebro",
+                                                                  "type":  "main",
+                                                                  "index":  0
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Telegram_Foto":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "node":  "Devolver_Cerebro",
+                                                                   "type":  "main",
+                                                                   "index":  0
+                                                               }
+                                                           ]
+                                                       ]
+                                          }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "binaryMode":  "separate",
+                     "callerPolicy":  "workflowsFromSameOwner",
+                     "availableInMCP":  false
+                 },
+    "staticData":  null,
+    "meta":  null,
+    "pinData":  {
+                    "input":  [
+                                  {
+                                      "json":  {
+                                                   "query":  "pasos para crear un producto en Simphony",
+                                                   "chat_id":  1941490810
+                                               }
+                                  }
+                              ]
+                },
+    "versionId":  "fa252c83-2af1-413f-a184-0609936f4336",
+    "activeVersionId":  "fa252c83-2af1-413f-a184-0609936f4336",
+    "versionCounter":  19,
+    "triggerCount":  0,
+    "shared":  [
+                   {
+                       "updatedAt":  "2026-04-19T13:30:45.724Z",
+                       "createdAt":  "2026-04-19T13:30:45.724Z",
+                       "role":  "workflow:owner",
+                       "workflowId":  "3e30HCu1WMRq14oF",
+                       "projectId":  "Gl0z3DNsbKkj4wmb",
+                       "project":  {
+                                       "updatedAt":  "2025-07-14T00:32:57.724Z",
+                                       "createdAt":  "2025-07-14T00:30:54.688Z",
+                                       "id":  "Gl0z3DNsbKkj4wmb",
+                                       "name":  "Jesus Navarrete \u003cjesus.navarrete@satcomla.com\u003e",
+                                       "type":  "personal",
+                                       "icon":  null,
+                                       "description":  null,
+                                       "creatorId":  "57c765b1-1447-43a1-a14d-bbeacac5d303"
+                                   }
+                   }
+               ],
+    "tags":  [
+
+             ],
+    "activeVersion":  {
+                          "updatedAt":  "2026-04-22T13:36:37.774Z",
+                          "createdAt":  "2026-04-22T13:36:37.774Z",
+                          "versionId":  "fa252c83-2af1-413f-a184-0609936f4336",
+                          "workflowId":  "3e30HCu1WMRq14oF",
+                          "nodes":  [
+                                        {
+                                            "parameters":  {
+                                                               "workflowInputs":  {
+                                                                                      "values":  [
+                                                                                                     {
+                                                                                                         "name":  "query"
+                                                                                                     },
+                                                                                                     {
+                                                                                                         "name":  "chat_id"
+                                                                                                     }
+                                                                                                 ]
+                                                                                  }
+                                                           },
+                                            "id":  "b093b0ed-308b-4aea-b39c-772af845294e",
+                                            "name":  "input",
+                                            "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                                            "typeVersion":  1.1,
+                                            "position":  [
+                                                             -1280,
+                                                             2672
+                                                         ]
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "jsCode":  "const results = $input.all().map(i =\u003e i.json).filter(r =\u003e r \u0026\u0026 r.id);\nconst meaningful = results.filter(r =\u003e (r.content || \u0027\u0027).trim().length \u003e= 40);\n\n// Enviamos el top 8 para reranking\nconst candidates = meaningful\n  .sort((a, b) =\u003e (b.combined_score || 0) - (a.combined_score || 0))\n  .slice(0, 8);\n\nconst formatted = candidates.map((c, i) =\u003e `[FRAGMENTO #${i}]\\n${c.content}`).join(\u0027\\n\\n\u0027);\n\nreturn [{ json: { \n  query: $(\u0027Extraer_Plan\u0027).item.json.querySearch || $(\u0027input\u0027).item.json.query,\n  candidates_text: formatted,\n  candidates_raw: candidates,\n  all_results: results\n} }];"
+                                                           },
+                                            "id":  "41a6ea80-e399-47d8-991a-af56995de105",
+                                            "name":  "Filtrar_Candidatos",
+                                            "type":  "n8n-nodes-base.code",
+                                            "typeVersion":  2,
+                                            "position":  [
+                                                             0,
+                                                             2688
+                                                         ]
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "jsCode":  "const inputData = $(\u0027Filtrar_Candidatos\u0027).item.json;\nconst candidates = inputData.candidates_raw;\nconst allResults = inputData.all_results;\n\ntry {\n  // CORRECCIÓN: Leer de $json.output que es donde el AI Agent entrega el texto\n  const cleanText = $json.output || \u0027\u0027;\n  const data = JSON.parse(cleanText);\n  const selectedIndices = data.indices || [];\n  \n  const relevantResults = selectedIndices.map(i =\u003e candidates[i]).filter(Boolean);\n  if (relevantResults.length === 0 \u0026\u0026 candidates.length \u003e 0) {\n    relevantResults.push(candidates[0]);\n  }\n\n  const seen = new Set();\n  const sourceUrls = [], pageNumbers = [], excludeIds = allResults.map(r =\u003e r.id).filter(Boolean);\n\n  for (const r of relevantResults) {\n    const src = r.metadata?.source_url || \u0027\u0027;\n    const pn = r.metadata?.page_number || 0;\n    const key = `${src}|${pn}`;\n    if (src \u0026\u0026 !seen.has(key)) {\n      seen.add(key);\n      sourceUrls.push(src);\n      pageNumbers.push(pn);\n    }\n  }\n\n  return [{ json: {\n    originalResults: allResults,\n    relevantResults: relevantResults,\n    indices_utilizados: selectedIndices,\n    needsExpansion: sourceUrls.length \u003e 0,\n    expansionParams: {\n      p_source_urls: sourceUrls,\n      p_page_numbers: pageNumbers,\n      p_exclude_ids: excludeIds,\n      p_window: 1\n    }\n  } }];\n} catch (e) {\n  return [{ json: {\n    originalResults: allResults,\n    relevantResults: [candidates[0]],\n    needsExpansion: !!candidates[0],\n    error: e.message,\n    expansionParams: {\n      p_source_urls: candidates[0]?.metadata?.source_url ? [candidates[0].metadata.source_url] : [],\n      p_page_numbers: candidates[0]?.metadata?.page_number ? [candidates[0].metadata.page_number] : [],\n      p_exclude_ids: allResults.map(r =\u003e r.id).filter(Boolean),\n      p_window: 1\n    }\n  } }];\n}"
+                                                           },
+                                            "id":  "899b7151-4133-4574-a2e2-8fdea139fd28",
+                                            "name":  "Procesar_Seleccion",
+                                            "type":  "n8n-nodes-base.code",
+                                            "typeVersion":  2,
+                                            "position":  [
+                                                             592,
+                                                             2688
+                                                         ]
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "jsCode":  "const { contexto, images, query, sourceUrl, chat_id } = $json;\nconst hasImage = !!$(\u0027input\u0027).item.json.image_base64;\nconst imageData = $(\u0027input\u0027).item.json.image_base64 || null;\nconst imageMimeType = $(\u0027input\u0027).item.json.image_mime_type || \u0027image/jpeg\u0027;\nconst userName = $(\u0027input\u0027).item.json.userName || \u0027Usuario\u0027;\nconst fecha = new Date().toLocaleDateString(\u0027es-MX\u0027, { weekday: \u0027long\u0027, year: \u0027numeric\u0027, month: \u0027long\u0027, day: \u0027numeric\u0027 });\n\nconst imageListForPrompt = images \u0026\u0026 images.length \u003e 0\n  ? \u0027\\n\\nIMÁGENES TÉCNICAS DISPONIBLES EN EL MANUAL:\\n\u0027 + images.map(img =\u003e \u0027  [\u0027 + img.index + \u0027] \u0027 + img.filename).join(\u0027\\n\u0027) + \u0027\\nSi el usuario solicita visuales o si una imagen ayuda a explicar, inclúyela usando: [ENVIAR_IMAGENES: N].\u0027\n  : \u0027\u0027;\n\nconst systemInstruction = `FECHA ACTUAL: ${fecha}\\nEres SARA, la asistente técnica experta de Satcom. Tu objetivo es resolver dudas utilizando la documentación técnica proporcionada.\\n\\nINSTRUCCIONES DE CONOCIMIENTO:\\n1. La información bajo \u0027DOCUMENTACIÓN DE APOYO\u0027 es tu conocimiento interno. NO agradezcas al usuario por esta información.\\n2. Responde directamente y de forma profesional basándote en la documentación.\\n3. Si la respuesta no está en los fragmentos, indícalo claramente sin inventar.\\n4. Estas hablando con ${userName}.\\n\\nREGLAS DE FORMATO:\\n- Cita la fuente (Manual/Sección) solo cuando la respuesta provenga de la documentación.\\n- Usa listas con viñetas para pasos técnicos.\\n- Para imágenes del manual que aporten valor: [ENVIAR_IMAGENES: N].\\n- NO inventes información.`;\n\nconst userParts = [];\nif (hasImage) userParts.push({ inline_data: { mime_type: imageMimeType, data: imageData } });\n\nlet fullPrompt;\nif (contexto) {\n  fullPrompt = `DOCUMENTACIÓN DE APOYO (Tu base de conocimientos):\\n${contexto}\\n${imageListForPrompt}\\n\\n________________________________\\nCONSULTA DEL USUARIO:\\n${query}`;\n} else {\n  fullPrompt = query;\n}\n\nuserParts.push({ text: fullPrompt });\n\nreturn [{ json: {\n  gemini_body: {\n    system_instruction: { parts: [{ text: systemInstruction }] },\n    contents: [{ role: \u0027user\u0027, parts: userParts }],\n    generationConfig: { temperature: 0.1, maxOutputTokens: 2048 }\n  },\n  images: images || [],\n  sourceUrl: sourceUrl || \u0027\u0027,\n  chat_id\n} }];"
+                                                           },
+                                            "id":  "3cb04d03-7a35-4a1f-80e0-8191d1ebe273",
+                                            "name":  "Preparar_Body_LLM",
+                                            "type":  "n8n-nodes-base.code",
+                                            "typeVersion":  2,
+                                            "position":  [
+                                                             1264,
+                                                             2816
+                                                         ]
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "options":  {
+                                                                               "maxOutputTokens":  2048,
+                                                                               "temperature":  0.2
+                                                                           }
+                                                           },
+                                            "id":  "8e449e7d-ab7e-4303-acf7-be195edb2a22",
+                                            "name":  "Modelo_Respuesta1",
+                                            "type":  "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+                                            "typeVersion":  1,
+                                            "position":  [
+                                                             1552,
+                                                             3040
+                                                         ],
+                                            "credentials":  {
+                                                                "googlePalmApi":  {
+                                                                                      "id":  "Ta2pXSGeHYq0FZJD",
+                                                                                      "name":  "Google Gemini(PaLM) Api account"
+                                                                                  }
+                                                            }
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "model":  {
+                                                                             "__rl":  true,
+                                                                             "value":  "gpt-3.5-turbo",
+                                                                             "mode":  "list",
+                                                                             "cachedResultName":  "gpt-3.5-turbo"
+                                                                         },
+                                                               "builtInTools":  {
+
+                                                                                },
+                                                               "options":  {
+
+                                                                           }
+                                                           },
+                                            "type":  "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+                                            "typeVersion":  1.3,
+                                            "position":  [
+                                                             1376,
+                                                             3056
+                                                         ],
+                                            "id":  "a3d1e39c-e5b1-4d28-a8cc-d8b193f864b2",
+                                            "name":  "OpenAI Chat Model3",
+                                            "credentials":  {
+                                                                "openAiApi":  {
+                                                                                  "id":  "ovGsSIf2aiqz6ETu",
+                                                                                  "name":  "OpenAi account"
+                                                                              }
+                                                            }
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "promptType":  "define",
+                                                               "text":  "={{ JSON.stringify({\n  contents: [{\n    parts: [{\n      text: `Eres un experto en filtrado de información técnica de Oracle Simphony.\\n\\nCONSULTA DEL USUARIO: ${$json.query}\\n\\nFRAGMENTOS DISPONIBLES:\\n${$json.candidates_text}\\n\\nTAREA:\\nSelecciona ÚNICAMENTE los números de los fragmentos que contienen la respuesta directa o información estructural indispensable para resolver la consulta del usuario.\\n\\nREGLAS CRÍTICAS DE FILTRADO:\\n1. RELEVANCIA TEMÁTICA: Si la consulta es sobre \"Menu Items\" (productos), DESCARTA fragmentos que pertenezcan a módulos distintos como \"Personnel\" (Personal), \"Labor Management\", \"Payments\" (Pagos), \"Taxes\" (Impuestos) o \"Gift Cards\".\\n2. JERARQUÍA DE PROCESOS: Distingue entre el proceso principal solicitado y procesos secundarios. Por ejemplo, si se pregunta \"cómo crear un producto\", los fragmentos sobre \"códigos de barras\" o \"impresión de tickets\" son secundarios y deben descartarse.\\n3. PRECISIÓN TÉCNICA: Prioriza fragmentos que describan componentes base como \"Definitions\", \"Classes\", \"Master Records\" y \"Prices\".\\n4. MINIMIZACIÓN: Si el fragmento es solo una portada o índice, DESCÁRTALO. Es mejor devolver pocos fragmentos relevantes que muchos vagos.\\n\\nSALIDA:\\nResponde exclusivamente con un JSON que tenga el formato: {\"indices\": [n, n...]} `\n    }]\n  }],\n  generationConfig: { temperature: 0.1, response_mime_type: \u0027application/json\u0027 }\n}) }}",
+                                                               "needsFallback":  true,
+                                                               "options":  {
+
+                                                                           }
+                                                           },
+                                            "type":  "@n8n/n8n-nodes-langchain.agent",
+                                            "typeVersion":  3.1,
+                                            "position":  [
+                                                             272,
+                                                             2688
+                                                         ],
+                                            "id":  "2bae7b3a-303f-4e67-890c-811b1b6e95e4",
+                                            "name":  "AI Agent"
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "model":  {
+                                                                             "__rl":  true,
+                                                                             "value":  "gpt-4-turbo",
+                                                                             "mode":  "list",
+                                                                             "cachedResultName":  "gpt-4-turbo"
+                                                                         },
+                                                               "builtInTools":  {
+
+                                                                                },
+                                                               "options":  {
+
+                                                                           }
+                                                           },
+                                            "type":  "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+                                            "typeVersion":  1.3,
+                                            "position":  [
+                                                             128,
+                                                             2944
+                                                         ],
+                                            "id":  "1ee36682-c63c-40cc-869e-90c61360c8a9",
+                                            "name":  "OpenAI Chat Model4",
+                                            "credentials":  {
+                                                                "openAiApi":  {
+                                                                                  "id":  "ovGsSIf2aiqz6ETu",
+                                                                                  "name":  "OpenAi account"
+                                                                              }
+                                                            }
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "options":  {
+
+                                                                           }
+                                                           },
+                                            "type":  "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+                                            "typeVersion":  1,
+                                            "position":  [
+                                                             288,
+                                                             2928
+                                                         ],
+                                            "id":  "1fa75c83-030b-4b94-9a05-3ebce22e147c",
+                                            "name":  "Google Gemini Chat Model",
+                                            "credentials":  {
+                                                                "googlePalmApi":  {
+                                                                                      "id":  "mMMNu6JhrqIAX7Q7",
+                                                                                      "name":  "Vertex"
+                                                                                  }
+                                                            }
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "method":  "POST",
+                                                               "url":  "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2-preview:embedContent",
+                                                               "authentication":  "predefinedCredentialType",
+                                                               "nodeCredentialType":  "googlePalmApi",
+                                                               "sendHeaders":  true,
+                                                               "headerParameters":  {
+                                                                                        "parameters":  [
+                                                                                                           {
+                                                                                                               "name":  "Content-Type",
+                                                                                                               "value":  "application/json"
+                                                                                                           }
+                                                                                                       ]
+                                                                                    },
+                                                               "sendBody":  true,
+                                                               "specifyBody":  "json",
+                                                               "jsonBody":  "={{ JSON.stringify({\n  model: \u0027models/gemini-embedding-2-preview\u0027,\n  content: {\n    parts: [\n      ...($(\u0027Extraer_Plan\u0027).item.json.hasImage ? [{ inline_data: { mime_type: $(\u0027Extraer_Plan\u0027).item.json.imageMimeType, data: $(\u0027Extraer_Plan\u0027).item.json.imageData } }] : []),\n      ...($(\u0027Extraer_Plan\u0027).item.json.querySearch ? [{ text: $(\u0027Extraer_Plan\u0027).item.json.querySearch }] : [])\n    ]\n  },\n  outputDimensionality: 3072\n}) }}",
+                                                               "options":  {
+                                                                               "timeout":  30000
+                                                                           }
+                                                           },
+                                            "id":  "057e5c9c-b45d-4184-a5ca-f541787873fa",
+                                            "name":  "Multimodal_Embedding2",
+                                            "type":  "n8n-nodes-base.httpRequest",
+                                            "typeVersion":  4.1,
+                                            "position":  [
+                                                             -384,
+                                                             2672
+                                                         ],
+                                            "credentials":  {
+                                                                "googlePalmApi":  {
+                                                                                      "id":  "mMMNu6JhrqIAX7Q7",
+                                                                                      "name":  "Vertex"
+                                                                                  }
+                                                            }
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "jsCode":  "const query = $(\u0027input\u0027).item.json.query || \u0027[imagen adjunta sin texto]\u0027;\nconst hasImage = !!$(\u0027input\u0027).item.json.image_base64;\nconst fecha = new Date().toLocaleDateString(\u0027es-MX\u0027, { weekday: \u0027long\u0027, year: \u0027numeric\u0027, month: \u0027long\u0027, day: \u0027numeric\u0027 });\nconst imgNota = hasImage ? \u0027\\nNOTA: El usuario adjuntó una imagen; incluye búsqueda aunque sea charla casual.\u0027 : \u0027\u0027;\nconst prompt = \u0027FECHA Y HORA ACTUAL: \u0027 + fecha +\n  \u0027\\n\\nNUEVA CONSULTA: \u0027 + query + imgNota +\n  \u0027\\n\\nClasifica esta consulta para búsqueda en la base de conocimientos.\\n\u0027 +\n  \u0027REGLA CLAVE: Si la consulta tiene referencias temporales (\"hoy\", \"esta semana\", \"este mes\", \"quién está de soporte/guardia/turno\"), \u0027 +\n  \u0027DEBES incluir la fecha actual (\u0027 + fecha + \u0027) en las queries.\\n\\n\u0027 +\n  \u0027CLASIFICACIÓN DE QUERY:\\n\u0027 +\n  \u0027- exact_id: códigos, IDs, tickets, errores específicos → semantic_weight=0.2, keyword_weight=0.8\\n\u0027 +\n  \u0027- conceptual: cómo hacer algo, explicaciones → semantic_weight=0.7, keyword_weight=0.3\\n\u0027 +\n  \u0027- mixed: conceptual + términos técnicos → semantic_weight=0.5, keyword_weight=0.5\\n\\n\u0027 +\n  \u0027Expande términos con sinónimos técnicos relevantes.\\n\\n\u0027 +\n  \u0027Responde SOLO con JSON válido sin markdown:\\n\u0027 +\n  \u0027{\"queries\": [\"query expandida\"], \"query_type\": \"conceptual|exact_id|mixed\", \"semantic_weight\": 0.7, \"keyword_weight\": 0.3}\u0027;\nreturn [{ json: { prompt } }];"
+                                                           },
+                                            "id":  "d02e5439-57ee-46ac-b55a-56e79a365ee7",
+                                            "name":  "Preparar_Planificador",
+                                            "type":  "n8n-nodes-base.code",
+                                            "typeVersion":  2,
+                                            "position":  [
+                                                             -800,
+                                                             2672
+                                                         ]
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "modelName":  "models/gemini-2.5-flash-lite",
+                                                               "options":  {
+                                                                               "temperature":  0
+                                                                           }
+                                                           },
+                                            "id":  "94fef962-ab12-434d-aff4-ffd59dc6415d",
+                                            "name":  "Modelo_Planificador",
+                                            "type":  "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+                                            "typeVersion":  1,
+                                            "position":  [
+                                                             -560,
+                                                             2928
+                                                         ],
+                                            "credentials":  {
+                                                                "googlePalmApi":  {
+                                                                                      "id":  "mMMNu6JhrqIAX7Q7",
+                                                                                      "name":  "Vertex"
+                                                                                  }
+                                                            }
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "model":  {
+                                                                             "__rl":  true,
+                                                                             "value":  "gpt-3.5-turbo",
+                                                                             "mode":  "list",
+                                                                             "cachedResultName":  "gpt-3.5-turbo"
+                                                                         },
+                                                               "builtInTools":  {
+
+                                                                                },
+                                                               "options":  {
+
+                                                                           }
+                                                           },
+                                            "type":  "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+                                            "typeVersion":  1.3,
+                                            "position":  [
+                                                             -736,
+                                                             2928
+                                                         ],
+                                            "id":  "60293b37-9fdb-4602-acb7-7aa19f9e6341",
+                                            "name":  "OpenAI Chat Model",
+                                            "credentials":  {
+                                                                "openAiApi":  {
+                                                                                  "id":  "ovGsSIf2aiqz6ETu",
+                                                                                  "name":  "OpenAi account"
+                                                                              }
+                                                            }
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "method":  "POST",
+                                                               "url":  "https://ufnpzxlvpwagavoytwco.supabase.co/rest/v1/rpc/match_documents",
+                                                               "sendHeaders":  true,
+                                                               "headerParameters":  {
+                                                                                        "parameters":  [
+                                                                                                           {
+                                                                                                               "name":  "apikey",
+                                                                                                               "value":  "{{REDACTED_SECRET}}"
+                                                                                                           },
+                                                                                                           {
+                                                                                                               "name":  "Authorization",
+                                                                                                               "value":  "{{REDACTED_SECRET}}"
+                                                                                                           },
+                                                                                                           {
+                                                                                                               "name":  "Content-Type",
+                                                                                                               "value":  "application/json"
+                                                                                                           },
+                                                                                                           {
+                                                                                                               "name":  "Content-Profile",
+                                                                                                               "value":  "rag"
+                                                                                                           },
+                                                                                                           {
+                                                                                                               "name":  "Accept-Profile",
+                                                                                                               "value":  "rag"
+                                                                                                           }
+                                                                                                       ]
+                                                                                    },
+                                                               "sendBody":  true,
+                                                               "specifyBody":  "json",
+                                                               "jsonBody":  "={{ JSON.stringify({\n  query_embedding: \u0027[\u0027 + $json.embedding.values.join(\u0027,\u0027) + \u0027]\u0027,\n  match_threshold: 0.25,\n  match_count: 7,\n  p_negocio: \u0027tinkay\u0027,\n  p_visibilidad: \u0027publico\u0027\n}) }}",
+                                                               "options":  {
+
+                                                                           }
+                                                           },
+                                            "id":  "ed5f9a9b-fc11-4735-b990-8fdcbc887891",
+                                            "name":  "Supabase_Search",
+                                            "type":  "n8n-nodes-base.httpRequest",
+                                            "typeVersion":  4.1,
+                                            "position":  [
+                                                             -160,
+                                                             2688
+                                                         ],
+                                            "alwaysOutputData":  true
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "method":  "POST",
+                                                               "url":  "https://ufnpzxlvpwagavoytwco.supabase.co/rest/v1/rpc/rag.get_adjacent_chunks",
+                                                               "sendHeaders":  true,
+                                                               "headerParameters":  {
+                                                                                        "parameters":  [
+                                                                                                           {
+                                                                                                               "name":  "apikey",
+                                                                                                               "value":  "{{REDACTED_SECRET}}"
+                                                                                                           },
+                                                                                                           {
+                                                                                                               "name":  "Authorization",
+                                                                                                               "value":  "{{REDACTED_SECRET}}"
+                                                                                                           },
+                                                                                                           {
+                                                                                                               "name":  "Content-Type",
+                                                                                                               "value":  "application/json"
+                                                                                                           }
+                                                                                                       ]
+                                                                                    },
+                                                               "sendBody":  true,
+                                                               "specifyBody":  "json",
+                                                               "jsonBody":  "={{ JSON.stringify($json.expansionParams) }}",
+                                                               "options":  {
+
+                                                                           }
+                                                           },
+                                            "id":  "873f3f7b-6f90-4b6b-baa2-0ab2f57c7d2d",
+                                            "name":  "Supabase_Adjacent",
+                                            "type":  "n8n-nodes-base.httpRequest",
+                                            "typeVersion":  4.1,
+                                            "position":  [
+                                                             816,
+                                                             2688
+                                                         ]
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "jsCode":  "const selectionData = $(\u0027Procesar_Seleccion\u0027).item.json;\nconst initialResults = selectionData.originalResults || [];\nconst relevantResults = selectionData.relevantResults || [];\nconst input = $(\u0027Extraer_Plan\u0027).item.json;\nlet adjacentChunks = [];\ntry { adjacentChunks = $(\u0027Supabase_Adjacent\u0027).all().map(i =\u003e i.json).filter(r =\u003e r \u0026\u0026 r.id); } catch (_) { adjacentChunks = []; }\nif (initialResults.length === 0 \u0026\u0026 (adjacentChunks.length === 0 || !adjacentChunks[0]?.id)) {\n  return [{ json: { contexto: \u0027\u0027, images: [], sourceUrl: \u0027\u0027, sinResultados: true, chat_id: input.chat_id, query: input.query } }];\n}\nconst seenContent = new Set();\nconst dedup = (arr) =\u003e arr.filter(r =\u003e { const key = (r.content || \u0027\u0027).trim(); if (!key || seenContent.has(key)) return false; seenContent.add(key); return true; });\nconst textResults = dedup(relevantResults).filter(r =\u003e r.type === \u0027text\u0027);\nconst imageResults = dedup(relevantResults).filter(r =\u003e r.type === \u0027image\u0027);\nconst allTextChunks = [...textResults, ...dedup(adjacentChunks).filter(r =\u003e r.type === \u0027text\u0027)];\nconst grouped = {}, groupMeta = {};\nfor (const chunk of allTextChunks) {\n  const src = chunk.metadata?.source_url || \u0027unknown\u0027;\n  if (!grouped[src]) { grouped[src] = []; groupMeta[src] = { manual_name: chunk.metadata?.manual_name || \u0027\u0027, article_title: chunk.metadata?.article_title || \u0027\u0027, contextual_header: chunk.metadata?.contextual_header || \u0027\u0027 }; }\n  grouped[src].push({ content: chunk.content, _pn: chunk.metadata?.page_number || 0, _ci: chunk.metadata?.chunk_index || 0 });\n}\nconst contextParts = [];\nfor (const [src, chunks] of Object.entries(grouped)) {\n  chunks.sort((a, b) =\u003e a._pn - b._pn || a._ci - b._ci);\n  const meta = groupMeta[src];\n  const headerParts = [meta.manual_name, meta.article_title, meta.contextual_header].filter(Boolean);\n  const headerLine = headerParts.length \u003e 0 ? \u0027[\u0027 + headerParts.join(\u0027 › \u0027) + \u0027]\\n\u0027 : \u0027\u0027;\n  contextParts.push(headerLine + chunks.map(c =\u003e c.content).join(\u0027\\n\u0027));\n}\nconst contexto = contextParts.join(\u0027\\n\\n---\\n\\n\u0027);\nconst images = imageResults.map((r, i) =\u003e ({ index: i+1, filename: r.metadata?.image_filename || (\u0027imagen_\u0027+(i+1)+\u0027.jpg\u0027), base64: r.metadata?.original_content || null, sourceUrl: r.metadata?.source_url || \u0027\u0027 })).slice(0, 4);\nconst mainSourceUrl = relevantResults[0]?.metadata?.source_url || initialResults[0]?.metadata?.source_url || \u0027\u0027;\nreturn [{ json: { contexto, images, sourceUrl: mainSourceUrl, sinResultados: false, chat_id: input.chat_id, query: input.query } }];"
+                                                           },
+                                            "id":  "db40adc1-5775-4981-bb40-c20263937492",
+                                            "name":  "Procesar_RRF",
+                                            "type":  "n8n-nodes-base.code",
+                                            "typeVersion":  2,
+                                            "position":  [
+                                                             1040,
+                                                             2816
+                                                         ]
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "promptType":  "define",
+                                                               "text":  "={{ $json.gemini_body.contents[0].parts }}",
+                                                               "needsFallback":  true,
+                                                               "options":  {
+                                                                               "systemMessage":  "={{ $json.gemini_body.system_instruction.parts[0].text }}"
+                                                                           }
+                                                           },
+                                            "id":  "8597498b-d050-459e-b3e5-005d072bab44",
+                                            "name":  "Agente_Respuesta",
+                                            "type":  "@n8n/n8n-nodes-langchain.agent",
+                                            "typeVersion":  3.1,
+                                            "position":  [
+                                                             1488,
+                                                             2816
+                                                         ]
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "jsCode":  "const preparador = $(\u0027Preparar_Body_LLM\u0027).item.json;\nconst imagesFromRAG = preparador.images || [];\nconst sourceUrl = preparador.source_url || preparador.sourceUrl || \u0027\u0027;\nconst chat_id = preparador.chat_id || $(\u0027input\u0027).item.json.chat_id;\nlet finalResponse = $json.output || \u0027\u0027;\nif (!finalResponse) {\n  return [{ json: { chat_id, final_response: \u0027SARA generó una respuesta vacía. Por favor reformula tu pregunta.\u0027, source_url: sourceUrl, send_image: false } }];\n}\nconst regex = /\\[ENVIAR_IMAGENES:\\s*([\\d,\\s]+)\\]/i;\nconst match = finalResponse.match(regex);\nlet imageToSend = null;\nif (match \u0026\u0026 imagesFromRAG.length \u003e 0) {\n  const indices = match[1].split(\u0027,\u0027).map(s =\u003e parseInt(s.trim())).filter(n =\u003e !isNaN(n));\n  for (const idx of indices) {\n    const img = imagesFromRAG[idx - 1];\n    if (img \u0026\u0026 img.base64) { imageToSend = img.base64; break; }\n  }\n  finalResponse = finalResponse.replace(regex, \u0027\u0027).trim();\n}\nconst output = { json: { chat_id, final_response: finalResponse, source_url: sourceUrl, send_image: !!imageToSend } };\nif (imageToSend) { output.binary = { data: { data: imageToSend, mimeType: \u0027image/jpeg\u0027, fileName: \u0027imagen_manual.jpg\u0027 } }; }\nreturn [output];"
+                                                           },
+                                            "id":  "23dac504-ede3-405c-8513-635e4aaa5169",
+                                            "name":  "Procesar_Output",
+                                            "type":  "n8n-nodes-base.code",
+                                            "typeVersion":  2,
+                                            "position":  [
+                                                             1824,
+                                                             2736
+                                                         ]
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "conditions":  {
+                                                                                  "boolean":  [
+                                                                                                  {
+                                                                                                      "value1":  "={{ $json.send_image }}",
+                                                                                                      "value2":  true
+                                                                                                  }
+                                                                                              ]
+                                                                              }
+                                                           },
+                                            "id":  "b9903dcf-590b-4f90-9564-c1e3928c9e88",
+                                            "name":  "Tiene_Imagen",
+                                            "type":  "n8n-nodes-base.if",
+                                            "typeVersion":  1,
+                                            "position":  [
+                                                             2016,
+                                                             2720
+                                                         ]
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "operation":  "sendPhoto",
+                                                               "chatId":  "={{ $json.chat_id }}",
+                                                               "binaryData":  true,
+                                                               "additionalFields":  {
+
+                                                                                    }
+                                                           },
+                                            "id":  "96ca766e-2e38-4981-8483-e11059a4490a",
+                                            "name":  "Telegram_Foto",
+                                            "type":  "n8n-nodes-base.telegram",
+                                            "typeVersion":  1.1,
+                                            "position":  [
+                                                             2176,
+                                                             2528
+                                                         ],
+                                            "webhookId":  "62fdf5eb-0eed-4346-9af1-08e0fd046e67",
+                                            "credentials":  {
+                                                                "telegramApi":  {
+                                                                                    "id":  "NI5ekmJ0uQSRq842",
+                                                                                    "name":  "Telegram account"
+                                                                                }
+                                                            },
+                                            "continueOnFail":  true
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "jsCode":  "const data = $(\u0027Procesar_Output\u0027).first().json;\nconst response = data.final_response || \u0027No encontré información relevante en los manuales.\u0027;\nconst sourceUrl = data.source_url || \u0027\u0027;\nconst withLink = sourceUrl ? `${response}\\\\n\\\\n🔗 [Ver en el Manual Original](${sourceUrl})` : response;\nreturn [{ json: { response: withLink } }];"
+                                                           },
+                                            "id":  "b398457a-dec8-409e-b6b9-f05d12b245c7",
+                                            "name":  "Devolver_Cerebro",
+                                            "type":  "n8n-nodes-base.code",
+                                            "typeVersion":  2,
+                                            "position":  [
+                                                             2400,
+                                                             2720
+                                                         ]
+                                        }
+                                    ],
+                          "connections":  {
+                                              "input":  {
+                                                            "main":  [
+                                                                         [
+                                                                             {
+                                                                                 "node":  "Preparar_Planificador",
+                                                                                 "type":  "main",
+                                                                                 "index":  0
+                                                                             }
+                                                                         ]
+                                                                     ]
+                                                        },
+                                              "Get_Variables":  {
+                                                                    "main":  [
+                                                                                 [
+                                                                                     {
+                                                                                         "node":  "Preparar_Planificador",
+                                                                                         "type":  "main",
+                                                                                         "index":  0
+                                                                                     }
+                                                                                 ]
+                                                                             ]
+                                                                },
+                                              "Filtrar_Candidatos":  {
+                                                                         "main":  [
+                                                                                      [
+                                                                                          {
+                                                                                              "node":  "AI Agent",
+                                                                                              "type":  "main",
+                                                                                              "index":  0
+                                                                                          }
+                                                                                      ]
+                                                                                  ]
+                                                                     },
+                                              "Procesar_Seleccion":  {
+                                                                         "main":  [
+                                                                                      [
+                                                                                          {
+                                                                                              "node":  "Procesar_RRF",
+                                                                                              "type":  "main",
+                                                                                              "index":  0
+                                                                                          }
+                                                                                      ]
+                                                                                  ]
+                                                                     },
+                                              "Preparar_Body_LLM":  {
+                                                                        "main":  [
+                                                                                     [
+                                                                                         {
+                                                                                             "node":  "Agente_Respuesta",
+                                                                                             "type":  "main",
+                                                                                             "index":  0
+                                                                                         }
+                                                                                     ]
+                                                                                 ]
+                                                                    },
+                                              "Modelo_Respuesta1":  {
+                                                                        "ai_languageModel":  [
+                                                                                                 [
+                                                                                                     {
+                                                                                                         "node":  "Agente_Respuesta",
+                                                                                                         "type":  "ai_languageModel",
+                                                                                                         "index":  1
+                                                                                                     }
+                                                                                                 ]
+                                                                                             ]
+                                                                    },
+                                              "OpenAI Chat Model3":  {
+                                                                         "ai_languageModel":  [
+                                                                                                  [
+                                                                                                      {
+                                                                                                          "node":  "Agente_Respuesta",
+                                                                                                          "type":  "ai_languageModel",
+                                                                                                          "index":  0
+                                                                                                      }
+                                                                                                  ]
+                                                                                              ]
+                                                                     },
+                                              "AI Agent":  {
+                                                               "main":  [
+                                                                            [
+                                                                                {
+                                                                                    "node":  "Procesar_Seleccion",
+                                                                                    "type":  "main",
+                                                                                    "index":  0
+                                                                                }
+                                                                            ]
+                                                                        ]
+                                                           },
+                                              "OpenAI Chat Model4":  {
+                                                                         "ai_languageModel":  [
+                                                                                                  [
+                                                                                                      {
+                                                                                                          "node":  "AI Agent",
+                                                                                                          "type":  "ai_languageModel",
+                                                                                                          "index":  0
+                                                                                                      }
+                                                                                                  ]
+                                                                                              ]
+                                                                     },
+                                              "Google Gemini Chat Model":  {
+                                                                               "ai_languageModel":  [
+                                                                                                        [
+                                                                                                            {
+                                                                                                                "node":  "AI Agent",
+                                                                                                                "type":  "ai_languageModel",
+                                                                                                                "index":  1
+                                                                                                            }
+                                                                                                        ]
+                                                                                                    ]
+                                                                           },
+                                              "Multimodal_Embedding2":  {
+                                                                            "main":  [
+                                                                                         [
+                                                                                             {
+                                                                                                 "node":  "Supabase_Search",
+                                                                                                 "type":  "main",
+                                                                                                 "index":  0
+                                                                                             }
+                                                                                         ]
+                                                                                     ]
+                                                                        },
+                                              "Preparar_Planificador":  {
+                                                                            "main":  [
+                                                                                         [
+                                                                                             {
+                                                                                                 "node":  "Agente_Planificador",
+                                                                                                 "type":  "main",
+                                                                                                 "index":  0
+                                                                                             }
+                                                                                         ]
+                                                                                     ]
+                                                                        },
+                                              "Extraer_Plan":  {
+                                                                   "main":  [
+                                                                                [
+                                                                                    {
+                                                                                        "node":  "Multimodal_Embedding2",
+                                                                                        "type":  "main",
+                                                                                        "index":  0
+                                                                                    }
+                                                                                ]
+                                                                            ]
+                                                               },
+                                              "Agente_Planificador":  {
+                                                                          "main":  [
+                                                                                       [
+                                                                                           {
+                                                                                               "node":  "Extraer_Plan",
+                                                                                               "type":  "main",
+                                                                                               "index":  0
+                                                                                           }
+                                                                                       ]
+                                                                                   ]
+                                                                      },
+                                              "Modelo_Planificador":  {
+                                                                          "ai_languageModel":  [
+                                                                                                   [
+                                                                                                       {
+                                                                                                           "node":  "Agente_Planificador",
+                                                                                                           "type":  "ai_languageModel",
+                                                                                                           "index":  1
+                                                                                                       }
+                                                                                                   ]
+                                                                                               ]
+                                                                      },
+                                              "OpenAI Chat Model":  {
+                                                                        "ai_languageModel":  [
+                                                                                                 [
+                                                                                                     {
+                                                                                                         "node":  "Agente_Planificador",
+                                                                                                         "type":  "ai_languageModel",
+                                                                                                         "index":  0
+                                                                                                     }
+                                                                                                 ]
+                                                                                             ]
+                                                                    },
+                                              "Supabase_Search":  {
+                                                                      "main":  [
+                                                                                   [
+                                                                                       {
+                                                                                           "node":  "Filtrar_Candidatos",
+                                                                                           "type":  "main",
+                                                                                           "index":  0
+                                                                                       }
+                                                                                   ]
+                                                                               ]
+                                                                  },
+                                              "Supabase_Adjacent":  {
+                                                                        "main":  [
+                                                                                     [
+                                                                                         {
+                                                                                             "node":  "Procesar_RRF",
+                                                                                             "type":  "main",
+                                                                                             "index":  0
+                                                                                         }
+                                                                                     ]
+                                                                                 ]
+                                                                    },
+                                              "Procesar_RRF":  {
+                                                                   "main":  [
+                                                                                [
+                                                                                    {
+                                                                                        "node":  "Preparar_Body_LLM",
+                                                                                        "type":  "main",
+                                                                                        "index":  0
+                                                                                    }
+                                                                                ]
+                                                                            ]
+                                                               },
+                                              "Agente_Respuesta":  {
+                                                                       "main":  [
+                                                                                    [
+                                                                                        {
+                                                                                            "node":  "Procesar_Output",
+                                                                                            "type":  "main",
+                                                                                            "index":  0
+                                                                                        }
+                                                                                    ]
+                                                                                ]
+                                                                   },
+                                              "Procesar_Output":  {
+                                                                      "main":  [
+                                                                                   [
+                                                                                       {
+                                                                                           "node":  "Tiene_Imagen",
+                                                                                           "type":  "main",
+                                                                                           "index":  0
+                                                                                       }
+                                                                                   ]
+                                                                               ]
+                                                                  },
+                                              "Tiene_Imagen":  {
+                                                                   "main":  [
+                                                                                [
+                                                                                    {
+                                                                                        "node":  "Telegram_Foto",
+                                                                                        "type":  "main",
+                                                                                        "index":  0
+                                                                                    }
+                                                                                ],
+                                                                                [
+                                                                                    {
+                                                                                        "node":  "Devolver_Cerebro",
+                                                                                        "type":  "main",
+                                                                                        "index":  0
+                                                                                    }
+                                                                                ]
+                                                                            ]
+                                                               },
+                                              "Telegram_Foto":  {
+                                                                    "main":  [
+                                                                                 [
+                                                                                     {
+                                                                                         "node":  "Devolver_Cerebro",
+                                                                                         "type":  "main",
+                                                                                         "index":  0
+                                                                                     }
+                                                                                 ]
+                                                                             ]
+                                                                }
+                                          },
+                          "authors":  "Jesus Navarrete",
+                          "name":  null,
+                          "description":  null,
+                          "autosaved":  false,
+                          "workflowPublishHistory":  [
+                                                         {
+                                                             "createdAt":  "2026-04-22T13:36:37.815Z",
+                                                             "id":  1018,
+                                                             "workflowId":  "3e30HCu1WMRq14oF",
+                                                             "versionId":  "fa252c83-2af1-413f-a184-0609936f4336",
+                                                             "event":  "activated",
+                                                             "userId":  "57c765b1-1447-43a1-a14d-bbeacac5d303"
+                                                         },
+                                                         {
+                                                             "createdAt":  "2026-04-22T13:36:37.803Z",
+                                                             "id":  1017,
+                                                             "workflowId":  "3e30HCu1WMRq14oF",
+                                                             "versionId":  "fa252c83-2af1-413f-a184-0609936f4336",
+                                                             "event":  "deactivated",
+                                                             "userId":  "57c765b1-1447-43a1-a14d-bbeacac5d303"
+                                                         }
+                                                     ]
+                      }
 }
