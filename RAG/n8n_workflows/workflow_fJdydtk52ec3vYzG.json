@@ -1,0 +1,471 @@
+{
+    "updatedAt":  "2026-04-23T07:58:22.927Z",
+    "createdAt":  "2026-04-23T07:38:09.326Z",
+    "id":  "fJdydtk52ec3vYzG",
+    "name":  "AUX_GetFiles_\u003cV1\u003e",
+    "description":  null,
+    "active":  true,
+    "isArchived":  false,
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "httpMethod":  "GET",
+                                         "path":  "GetFiles",
+                                         "responseMode":  "lastNode",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "webhook-01",
+                      "name":  "Webhook GET",
+                      "type":  "n8n-nodes-base.webhook",
+                      "typeVersion":  1,
+                      "position":  [
+                                       100,
+                                       200
+                                   ],
+                      "webhookId":  "66b24917-b5a6-4dd7-a782-067b28cea861"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// Obtener el parametro fileName del query string\nconst query = $input.item.json.query || {};\nconst fileName = query.fileName || \u0027\u0027;\nreturn { fileName, solicitadoArchivo: fileName !== \u0027\u0027 };"
+                                     },
+                      "id":  "code-parse",
+                      "name":  "Parsear Parametros",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       350,
+                                       200
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "string":  [
+                                                                           {
+                                                                               "value1":  "={{ $json.fileName }}",
+                                                                               "operation":  "isNotEmpty"
+                                                                           }
+                                                                       ]
+                                                        }
+                                     },
+                      "id":  "if-01",
+                      "name":  "Verificar Nombre Archivo",
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  1,
+                      "position":  [
+                                       600,
+                                       200
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                                                                  "command":  "stat -c \"%n|%w|%y\" /opt/RAG/implementacion_SARA/*"
+                                     },
+                      "id":  "cmd-list",
+                      "name":  "Listar Archivos del Servidor",
+                      "type":  "n8n-nodes-base.executeCommand",
+                      "typeVersion":  1,
+                      "position":  [
+                                       850,
+                                       350
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                                                                  "jsCode":  "const stdout = $input.item.json.stdout || '';\nconst lines = stdout.split('\\n').filter(line => line.trim());\n\nconst archivos = lines.map(line => {\n  const [fullPath, birth, mod] = line.split('|');\n  const name = fullPath.split('/').pop();\n  \n  // Limpiar fechas de Linux (quitar milisegundos y timezone si es necesario)\n  const cleanDate = (d) => (d === '-' || !d) ? 'N/A' : d.split('.')[0];\n\n  return {\n    nombre: name,\n    creacion: cleanDate(birth),\n    modificacion: cleanDate(mod)\n  };\n});\n\nreturn { archivos, total: archivos.length, directorio: '/opt/RAG/implementacion_SARA/' };"
+                                     },
+                      "id":  "code-list",
+                      "name":  "Formatear Lista",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       1100,
+                                       350
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "command":  "=cat \"/opt/RAG/implementacion_SARA/{{ $json.fileName }}\" | base64 -w 0"
+                                     },
+                      "id":  "cmd-read",
+                      "name":  "Leer Archivo en Base64",
+                      "type":  "n8n-nodes-base.executeCommand",
+                      "typeVersion":  1,
+                      "position":  [
+                                       850,
+                                       80
+                                   ],
+                      "onError":  "continueErrorOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const resultado = $input.item.json;\nconst stdout = (resultado.stdout || \u0027\u0027).trim();\nconst exitCode = resultado.exitCode;\n\nif (exitCode !== 0 || !stdout) {\n  return { \n    error: true, \n    mensaje: \u0027Archivo no encontrado o error al leerlo\u0027,\n    detalles: resultado.stderr || \u0027Verifica el nombre del archivo\u0027\n  };\n}\n\n// Decodificar el base64 de vuelta al texto original\nconst contenido = Buffer.from(stdout, \u0027base64\u0027).toString(\u0027utf-8\u0027);\nreturn { contenido, archivoLeido: true, bytes: contenido.length };"
+                                     },
+                      "id":  "code-read",
+                      "name":  "Decodificar y Devolver Archivo",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       1100,
+                                       80
+                                   ]
+                  }
+              ],
+    "connections":  {
+                        "Webhook GET":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "node":  "Parsear Parametros",
+                                                                 "type":  "main",
+                                                                 "index":  0
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Parsear Parametros":  {
+                                                   "main":  [
+                                                                [
+                                                                    {
+                                                                        "node":  "Verificar Nombre Archivo",
+                                                                        "type":  "main",
+                                                                        "index":  0
+                                                                    }
+                                                                ]
+                                                            ]
+                                               },
+                        "Verificar Nombre Archivo":  {
+                                                         "main":  [
+                                                                      [
+                                                                          {
+                                                                              "node":  "Leer Archivo en Base64",
+                                                                              "type":  "main",
+                                                                              "index":  0
+                                                                          }
+                                                                      ],
+                                                                      [
+                                                                          {
+                                                                              "node":  "Listar Archivos del Servidor",
+                                                                              "type":  "main",
+                                                                              "index":  0
+                                                                          }
+                                                                      ]
+                                                                  ]
+                                                     },
+                        "Listar Archivos del Servidor":  {
+                                                             "main":  [
+                                                                          [
+                                                                              {
+                                                                                  "node":  "Formatear Lista",
+                                                                                  "type":  "main",
+                                                                                  "index":  0
+                                                                              }
+                                                                          ]
+                                                                      ]
+                                                         },
+                        "Leer Archivo en Base64":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "node":  "Decodificar y Devolver Archivo",
+                                                                            "type":  "main",
+                                                                            "index":  0
+                                                                        }
+                                                                    ],
+                                                                    [
+                                                                        {
+                                                                            "node":  "Decodificar y Devolver Archivo",
+                                                                            "type":  "main",
+                                                                            "index":  0
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "callerPolicy":  "workflowsFromSameOwner",
+                     "availableInMCP":  false,
+                     "binaryMode":  "separate"
+                 },
+    "staticData":  null,
+    "meta":  null,
+    "pinData":  {
+                    "Webhook":  [
+                                    {
+                                        "json":  {
+                                                     "headers":  {
+                                                                     "host":  "sara.mysatcomla.com",
+                                                                     "user-agent":  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36 OPR/129.0.0.0",
+                                                                     "accept":  "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+                                                                     "accept-encoding":  "gzip, deflate, br",
+                                                                     "accept-language":  "es-419,es;q=0.9,en;q=0.8,de;q=0.7,pl;q=0.6",
+                                                                     "cookie":  {
+                                                                                    "__redacted":  true,
+                                                                                    "reason":  "node_defined_field",
+                                                                                    "canReveal":  false
+                                                                                },
+                                                                     "priority":  "u=0, i",
+                                                                     "sec-ch-ua":  "\"Not:A-Brand\";v=\"99\", \"Opera\";v=\"129\", \"Chromium\";v=\"145\"",
+                                                                     "sec-ch-ua-mobile":  "?0",
+                                                                     "sec-ch-ua-platform":  "\"Windows\"",
+                                                                     "sec-fetch-dest":  "document",
+                                                                     "sec-fetch-mode":  "navigate",
+                                                                     "sec-fetch-site":  "none",
+                                                                     "sec-fetch-user":  "?1",
+                                                                     "upgrade-insecure-requests":  "1",
+                                                                     "via":  "2.0 Caddy",
+                                                                     "x-forwarded-for":  "190.63.125.173",
+                                                                     "x-forwarded-host":  "sara.mysatcomla.com",
+                                                                     "x-forwarded-proto":  "https"
+                                                                 },
+                                                     "params":  {
+
+                                                                },
+                                                     "query":  {
+
+                                                               },
+                                                     "webhookUrl":  "https://sara.mysatcomla.com/webhook/GetFiles",
+                                                     "executionMode":  "production"
+                                                 },
+                                        "pairedItem":  {
+                                                           "item":  0
+                                                       }
+                                    }
+                                ]
+                },
+    "versionId":  "3191bc26-9ecc-4e6f-b7c1-557e86fb8983",
+    "activeVersionId":  "3191bc26-9ecc-4e6f-b7c1-557e86fb8983",
+    "versionCounter":  27,
+    "triggerCount":  1,
+    "shared":  [
+                   {
+                       "updatedAt":  "2026-04-23T07:38:09.331Z",
+                       "createdAt":  "2026-04-23T07:38:09.331Z",
+                       "role":  "workflow:owner",
+                       "workflowId":  "fJdydtk52ec3vYzG",
+                       "projectId":  "Gl0z3DNsbKkj4wmb",
+                       "project":  {
+                                       "updatedAt":  "2025-07-14T00:32:57.724Z",
+                                       "createdAt":  "2025-07-14T00:30:54.688Z",
+                                       "id":  "Gl0z3DNsbKkj4wmb",
+                                       "name":  "Jesus Navarrete \u003cjesus.navarrete@satcomla.com\u003e",
+                                       "type":  "personal",
+                                       "icon":  null,
+                                       "description":  null,
+                                       "creatorId":  "57c765b1-1447-43a1-a14d-bbeacac5d303"
+                                   }
+                   }
+               ],
+    "tags":  [
+
+             ],
+    "activeVersion":  {
+                          "updatedAt":  "2026-04-23T07:58:22.928Z",
+                          "createdAt":  "2026-04-23T07:58:22.928Z",
+                          "versionId":  "3191bc26-9ecc-4e6f-b7c1-557e86fb8983",
+                          "workflowId":  "fJdydtk52ec3vYzG",
+                          "nodes":  [
+                                        {
+                                            "parameters":  {
+                                                               "httpMethod":  "GET",
+                                                               "path":  "GetFiles",
+                                                               "responseMode":  "lastNode",
+                                                               "options":  {
+
+                                                                           }
+                                                           },
+                                            "id":  "webhook-01",
+                                            "name":  "Webhook GET",
+                                            "type":  "n8n-nodes-base.webhook",
+                                            "typeVersion":  1,
+                                            "position":  [
+                                                             100,
+                                                             200
+                                                         ],
+                                            "webhookId":  "66b24917-b5a6-4dd7-a782-067b28cea861"
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "jsCode":  "// Obtener el parametro fileName del query string\nconst query = $input.item.json.query || {};\nconst fileName = query.fileName || \u0027\u0027;\nreturn { fileName, solicitadoArchivo: fileName !== \u0027\u0027 };"
+                                                           },
+                                            "id":  "code-parse",
+                                            "name":  "Parsear Parametros",
+                                            "type":  "n8n-nodes-base.code",
+                                            "typeVersion":  2,
+                                            "position":  [
+                                                             350,
+                                                             200
+                                                         ]
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "conditions":  {
+                                                                                  "string":  [
+                                                                                                 {
+                                                                                                     "value1":  "={{ $json.fileName }}",
+                                                                                                     "operation":  "isNotEmpty"
+                                                                                                 }
+                                                                                             ]
+                                                                              }
+                                                           },
+                                            "id":  "if-01",
+                                            "name":  "Verificar Nombre Archivo",
+                                            "type":  "n8n-nodes-base.if",
+                                            "typeVersion":  1,
+                                            "position":  [
+                                                             600,
+                                                             200
+                                                         ]
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "command":  "ls -1 /opt/RAG/implementacion_SARA/"
+                                                           },
+                                            "id":  "cmd-list",
+                                            "name":  "Listar Archivos del Servidor",
+                                            "type":  "n8n-nodes-base.executeCommand",
+                                            "typeVersion":  1,
+                                            "position":  [
+                                                             850,
+                                                             350
+                                                         ]
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "jsCode":  "const stdout = $input.item.json.stdout || \u0027\u0027;\nconst archivos = stdout.split(\u0027\\n\u0027).map(f =\u003e f.trim()).filter(f =\u003e f);\nreturn { archivos, total: archivos.length, directorio: \u0027/opt/RAG/implementacion_SARA/\u0027 };"
+                                                           },
+                                            "id":  "code-list",
+                                            "name":  "Formatear Lista",
+                                            "type":  "n8n-nodes-base.code",
+                                            "typeVersion":  2,
+                                            "position":  [
+                                                             1100,
+                                                             350
+                                                         ]
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "command":  "=cat \"/opt/RAG/implementacion_SARA/{{ $json.fileName }}\" | base64 -w 0"
+                                                           },
+                                            "id":  "cmd-read",
+                                            "name":  "Leer Archivo en Base64",
+                                            "type":  "n8n-nodes-base.executeCommand",
+                                            "typeVersion":  1,
+                                            "position":  [
+                                                             850,
+                                                             80
+                                                         ],
+                                            "onError":  "continueErrorOutput"
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "jsCode":  "const resultado = $input.item.json;\nconst stdout = (resultado.stdout || \u0027\u0027).trim();\nconst exitCode = resultado.exitCode;\n\nif (exitCode !== 0 || !stdout) {\n  return { \n    error: true, \n    mensaje: \u0027Archivo no encontrado o error al leerlo\u0027,\n    detalles: resultado.stderr || \u0027Verifica el nombre del archivo\u0027\n  };\n}\n\n// Decodificar el base64 de vuelta al texto original\nconst contenido = Buffer.from(stdout, \u0027base64\u0027).toString(\u0027utf-8\u0027);\nreturn { contenido, archivoLeido: true, bytes: contenido.length };"
+                                                           },
+                                            "id":  "code-read",
+                                            "name":  "Decodificar y Devolver Archivo",
+                                            "type":  "n8n-nodes-base.code",
+                                            "typeVersion":  2,
+                                            "position":  [
+                                                             1100,
+                                                             80
+                                                         ]
+                                        }
+                                    ],
+                          "connections":  {
+                                              "Webhook GET":  {
+                                                                  "main":  [
+                                                                               [
+                                                                                   {
+                                                                                       "node":  "Parsear Parametros",
+                                                                                       "type":  "main",
+                                                                                       "index":  0
+                                                                                   }
+                                                                               ]
+                                                                           ]
+                                                              },
+                                              "Parsear Parametros":  {
+                                                                         "main":  [
+                                                                                      [
+                                                                                          {
+                                                                                              "node":  "Verificar Nombre Archivo",
+                                                                                              "type":  "main",
+                                                                                              "index":  0
+                                                                                          }
+                                                                                      ]
+                                                                                  ]
+                                                                     },
+                                              "Verificar Nombre Archivo":  {
+                                                                               "main":  [
+                                                                                            [
+                                                                                                {
+                                                                                                    "node":  "Leer Archivo en Base64",
+                                                                                                    "type":  "main",
+                                                                                                    "index":  0
+                                                                                                }
+                                                                                            ],
+                                                                                            [
+                                                                                                {
+                                                                                                    "node":  "Listar Archivos del Servidor",
+                                                                                                    "type":  "main",
+                                                                                                    "index":  0
+                                                                                                }
+                                                                                            ]
+                                                                                        ]
+                                                                           },
+                                              "Listar Archivos del Servidor":  {
+                                                                                   "main":  [
+                                                                                                [
+                                                                                                    {
+                                                                                                        "node":  "Formatear Lista",
+                                                                                                        "type":  "main",
+                                                                                                        "index":  0
+                                                                                                    }
+                                                                                                ]
+                                                                                            ]
+                                                                               },
+                                              "Leer Archivo en Base64":  {
+                                                                             "main":  [
+                                                                                          [
+                                                                                              {
+                                                                                                  "node":  "Decodificar y Devolver Archivo",
+                                                                                                  "type":  "main",
+                                                                                                  "index":  0
+                                                                                              }
+                                                                                          ],
+                                                                                          [
+                                                                                              {
+                                                                                                  "node":  "Decodificar y Devolver Archivo",
+                                                                                                  "type":  "main",
+                                                                                                  "index":  0
+                                                                                              }
+                                                                                          ]
+                                                                                      ]
+                                                                         }
+                                          },
+                          "authors":  "Jesus Navarrete",
+                          "name":  null,
+                          "description":  null,
+                          "autosaved":  false,
+                          "workflowPublishHistory":  [
+                                                         {
+                                                             "createdAt":  "2026-04-23T07:58:22.977Z",
+                                                             "id":  1115,
+                                                             "workflowId":  "fJdydtk52ec3vYzG",
+                                                             "versionId":  "3191bc26-9ecc-4e6f-b7c1-557e86fb8983",
+                                                             "event":  "activated",
+                                                             "userId":  "57c765b1-1447-43a1-a14d-bbeacac5d303"
+                                                         },
+                                                         {
+                                                             "createdAt":  "2026-04-23T07:58:22.964Z",
+                                                             "id":  1114,
+                                                             "workflowId":  "fJdydtk52ec3vYzG",
+                                                             "versionId":  "3191bc26-9ecc-4e6f-b7c1-557e86fb8983",
+                                                             "event":  "deactivated",
+                                                             "userId":  "57c765b1-1447-43a1-a14d-bbeacac5d303"
+                                                         }
+                                                     ]
+                      }
+}
