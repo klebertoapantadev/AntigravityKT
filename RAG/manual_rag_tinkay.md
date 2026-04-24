@@ -190,4 +190,50 @@ erDiagram
   - Temporales: `/opt/RAG/temp_files/` (Para carga de archivos vía POST)
 
 ---
+
+## 🛠️ 7. Flujos de Mantenimiento y Operaciones
+
+Flujos auxiliares utilizados para el despliegue y mantenimiento del sistema RAG. No forman parte del flujo de datos principal, sino de las operaciones de DevOps.
+
+### 7.1 `TEMP_DEPLOY_INGESTA` (ID: `9X5Ohy3YqmKRyk05`)
+
+| Campo        | Detalle                                                              |
+|--------------|----------------------------------------------------------------------|
+| **Tipo**     | `API_` (Webhook POST)                                                |
+| **Estado**   | Publicado / Webhook desactivado                                      |
+| **Ruta n8n** | Personal → RAG VERTEX                                                |
+| **URL**      | `https://sara.mysatcomla.com/workflow/9X5Ohy3YqmKRyk05`             |
+
+#### ¿Qué hace?
+
+Permite **actualizar remotamente el script Python de ingesta** (`Ingesta_PDF_WEB.py`) en el servidor SARA sin necesidad de acceso SSH. Actúa como un endpoint de despliegue continuo (CD) artesanal.
+
+#### Nodos:
+
+```
+[Webhook POST /deploy-ingesta] ──▶ [WriteScript (Execute Command)]
+```
+
+1. **Webhook** — Recibe una petición `POST` con el contenido del nuevo script en el body. Responde `200 OK` inmediatamente.
+2. **WriteScript** — Ejecuta el siguiente comando en el servidor:
+   ```bash
+   python3 -c "import sys; f=open('/opt/RAG/implementacion_SARA/Ingesta_PDF_WEB.py', 'w'); f.write(sys.stdin.read())"
+   ```
+   Sobreescribe el archivo destino con el contenido recibido.
+
+#### Ejemplo de uso:
+
+```bash
+# Desplegar una nueva versión del script
+curl -X POST https://sara.mysatcomla.com/webhook/deploy-ingesta \
+     --data-binary @Ingesta_PDF_WEB.py \
+     -H "Content-Type: text/plain"
+```
+
+#### ⚠️ Notas de nomenclatura
+
+> El prefijo `TEMP_` indica que fue creado como solución temporal durante el desarrollo inicial. Pendiente renombrar a `API_DeployScriptIngesta_V1` para alinearlo con el estándar de nomenclatura del proyecto.
+
+---
+
 *Manual generado por Antigravity - Proyecto TINKAY 2026*

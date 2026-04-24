@@ -271,7 +271,8 @@
       "position": [
         -864,
         -96
-      ]
+      ],
+      "continueOnFail": true
     },
     {
       "parameters": {
@@ -289,6 +290,7 @@
         -640,
         -96
       ],
+      "continueOnFail": true,
       "credentials": {
         "postgres": {
           "id": "FaUacjYgtrgjH96Z",
@@ -308,7 +310,7 @@
             ]
           }
         },
-        "responseBody": "={{ { \"success\": $json.total > 0, \"total_vectores\": $json.total, \"source_url\": $('Subir a Drive').item.json.webViewLink, \"output_script\": $('Ingesta File').item.json.stdout || $('Ingesta File').item.json.stderr } }}"
+        "responseBody": "={{ { \"success\": ($node[\"Validar BDD\"].json.total || 0) > 0, \"total_vectores\": ($node[\"Validar BDD\"].json.total || 0), \"source_url\": $('Subir a Drive').item.json.webViewLink, \"script_output\": ($node[\"Ingesta File\"].json.stdout || $node[\"Ingesta File\"].json.stderr || \"Sin salida\") } }}"
       },
       "id": "a948a393-fc94-49b2-8ff8-514a0d7235b9",
       "name": "Responder Ingesta",

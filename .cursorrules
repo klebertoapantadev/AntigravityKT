@@ -1,0 +1,26 @@
+# Reglas de Proyecto: TINKAY
+
+Este archivo contiene las reglas específicas y estándares técnicos para el ecosistema de Tinkay Floristería. Estas reglas complementan las Reglas Globales.
+
+## 1. Gestión del Repositorio RAG
+**Contexto:** Instrucciones para mantener sincronizado el código fuente, flujos y configuraciones del ecosistema RAG de Tinkay con el sistema de control de versiones.
+
+- **Sincronización de Artefactos (Post-Prueba):** 
+  Si se crea, modifica o propone cualquier artefacto técnico relacionado con el sistema RAG (como scripts de ingesta, esquemas de Supabase, funciones SQL, configuraciones o flujos exportados de n8n), **DEBE** ser respaldado físicamente en la carpeta `RAG/` del proyecto.
+  * **Condición Obligatoria:** Esto solo debe hacerse **después** de que el artefacto haya superado al menos una prueba exitosa. Nunca guardar código no probado.
+
+- **Nomenclatura de Flujos n8n (OBLIGATORIO):**
+  Los archivos JSON exportados de n8n dentro de `RAG/n8n_workflows/` **SIEMPRE** deben nombrarse usando el **ID del flujo** como nombre de archivo, NO el nombre del flujo. Esto previene duplicados y garantiza trazabilidad directa con n8n.
+  * **Formato correcto:** `<ID_DEL_FLUJO>.json` (ej: `eiseWnDVUMV8L49D.json`)
+  * **Formato incorrecto:** `TinkayRAG_ChatSARA_V1.json` (usar el nombre del flujo está PROHIBIDO)
+  * Si el JSON exportado no contiene un campo `"id"`, se debe solicitar al usuario el ID del flujo desde la interfaz de n8n antes de guardarlo.
+  * Para identificar a qué flujo corresponde cada archivo, consultar el campo `"name"` dentro del propio JSON.
+
+- **Comando "Actualiza el repositorio del RAG":** 
+  Cuando el usuario ingrese exactamente esta solicitud, el agente deberá:
+  1. Extraer o recopilar las últimas versiones operativas de los flujos de n8n y scripts de Supabase.
+  2. Guardar y sobrescribir estos archivos en sus respectivos directorios dentro de la carpeta `RAG/`, usando el ID del flujo como nombre de archivo.
+  3. Realizar un commit en GIT documentando los cambios en español y subir (push) los cambios al repositorio remoto.
+
+## 2. Consistencia del Catálogo
+- El archivo `catalogoTinkay.MD` es la fuente de verdad para los productos. Cualquier cambio en la oferta comercial debe reflejarse en este archivo para asegurar que la base de conocimientos del RAG esté siempre actualizada.
